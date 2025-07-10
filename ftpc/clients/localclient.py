@@ -16,15 +16,6 @@ class LocalClient(Client):
         return super().__exit__(exc_type, exc_val, exc_tb)
 
     def ls(self, path: PurePath) -> List[FileDescriptor]:
-        """
-        List files and directories in the specified local path.
-
-        Args:
-            path: The local path to list
-
-        Returns:
-            A list of FileDescriptor objects representing the files and directories
-        """
         result = []
 
         try:
@@ -43,7 +34,7 @@ class LocalClient(Client):
                     path=pure_path,
                     filetype=file_type,
                     size=stat_info.st_size,
-                    modified_time=datetime.fromtimestamp(stat_info.st_mtime)
+                    modified_time=datetime.fromtimestamp(stat_info.st_mtime),
                 )
 
                 result.append(fd)

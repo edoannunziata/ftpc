@@ -6,8 +6,8 @@ def init_dialog_box(
     stdscr: Any,
     title: str,
     content: List[str],
-    prompt: str = 'Press Any key to continue',
-    allowed_input: Callable[[str], bool] = lambda _: True
+    prompt: str = "Press Any key to continue",
+    allowed_input: Callable[[str], bool] = lambda _: True,
 ):
     # Get screen dimensions
     height, width = stdscr.getmaxyx()
@@ -24,7 +24,7 @@ def init_dialog_box(
     dialog.box()
 
     # Add title
-    title = title[:dialog_width - 4]  # Truncate if too long
+    title = title[: dialog_width - 4]  # Truncate if too long
     title_x = (dialog_width - len(title)) // 2
     dialog.addstr(0, title_x, title)
 
@@ -32,7 +32,7 @@ def init_dialog_box(
     for i, line in enumerate(content):
         if i >= dialog_height - 2:  # Reserve bottom line for prompt
             break
-        line = line[:dialog_width - 4]  # Truncate if too long
+        line = line[: dialog_width - 4]  # Truncate if too long
         dialog.addstr(i + 1, 2, line)
 
     # Add prompt
@@ -44,22 +44,20 @@ def init_dialog_box(
         if allowed_input(key := stdscr.getkey()):
             return key
 
+
 def show_dialog(
-    stdscr: Any,
-    title: str,
-    content: List[str],
-    prompt: str = 'Press Any key to close'
+    stdscr: Any, title: str, content: List[str], prompt: str = "Press Any key to close"
 ):
     init_dialog_box(stdscr, title, content, prompt, lambda _: True)
 
 
 def show_confirmation_dialog(
-    stdscr: Any,
-    content: str,
-    prompt: str = 'Confirm? (y/n)'
+    stdscr: Any, content: str, prompt: str = "Confirm? (y/n)"
 ) -> bool:
-    key = init_dialog_box(stdscr, 'Confirm?', [content], prompt, lambda u: u.lower() in 'yn')
-    return key.lower() == 'y'
+    key = init_dialog_box(
+        stdscr, "Confirm?", [content], prompt, lambda u: u.lower() in "yn"
+    )
+    return key.lower() == "y"
 
 
 def show_help_dialog(stdscr: Any):
@@ -82,9 +80,9 @@ def show_help_dialog(stdscr: Any):
         "Other Commands:",
         "  r          - Refresh current directory",
         "  ?          - Show this help",
-        "  q          - Quit program"
+        "  q          - Quit program",
     ]
-    show_dialog(stdscr, title='Key Commands', content=msg)
+    show_dialog(stdscr, title="Key Commands", content=msg)
 
 
 class ProgressDialog:
@@ -139,14 +137,14 @@ class ProgressDialog:
         self.dialog.box()
 
         # Add title
-        title = self.title[:dialog_width - 4]  # Truncate if too long
+        title = self.title[: dialog_width - 4]  # Truncate if too long
         title_x = (dialog_width - len(title)) // 2
         self.dialog.addstr(0, title_x, title)
 
         # Add file name
         file_info = f"File: {self.file_name}"
         if len(file_info) > dialog_width - 4:
-            file_info = file_info[:dialog_width - 7] + "..."
+            file_info = file_info[: dialog_width - 7] + "..."
         self.dialog.addstr(1, 2, file_info)
 
         # Add size info
@@ -212,7 +210,11 @@ class ProgressDialog:
         self.current = current_bytes
 
         # Calculate percentage
-        percentage = min(100.0, (current_bytes / self.total_size) * 100) if self.total_size > 0 else 0
+        percentage = (
+            min(100.0, (current_bytes / self.total_size) * 100)
+            if self.total_size > 0
+            else 0
+        )
 
         # Update the progress bar
         self._draw_progress_bar(percentage)
@@ -221,7 +223,7 @@ class ProgressDialog:
         self.stdscr.nodelay(True)
         try:
             key = self.stdscr.getkey()
-            if key.lower() == 'q':
+            if key.lower() == "q":
                 self.canceled = True
                 return False
         except Exception:
@@ -252,4 +254,3 @@ class ProgressDialog:
         self.stdscr.refresh()
         # Return False to propagate exceptions
         return False
-

@@ -9,15 +9,7 @@ from ftpc.filedescriptor import FileDescriptor, FileType
 
 
 class FtpClient(Client):
-    def __init__(
-        self,
-        url,
-        *,
-        tls=True,
-        username='',
-        password='',
-        name=''
-    ):
+    def __init__(self, url, *, tls=True, username="", password="", name=""):
         self.url = url
         self.tls = tls
         self.username = username
@@ -46,15 +38,6 @@ class FtpClient(Client):
         return self._name
 
     def ls(self, path: PurePath) -> List[FileDescriptor]:
-        """
-        List files and directories in the specified FTP path.
-
-        Args:
-            path: The remote FTP path to list
-
-        Returns:
-            A list of FileDescriptor objects representing the files and directories
-        """
         result = []
 
         try:
@@ -81,7 +64,7 @@ class FtpClient(Client):
 
                     fd = FileDescriptor(
                         path=pure_path,
-                        filetype=FileType.DIRECTORY if is_dir else FileType.FILE
+                        filetype=FileType.DIRECTORY if is_dir else FileType.FILE,
                     )
                     result.append(fd)
 
@@ -113,36 +96,30 @@ class FtpClient(Client):
                 pass
 
     def _parse_list_line(self, line: str) -> FileDescriptor | None:
-        """
-        Parse a line from the FTP LIST command output.
-
-        Args:
-            line: The line from LIST output
-            parent_path: The parent path for constructing full paths
-
-        Returns:
-            A FileDescriptor object, or None if parsing failed
-        """
         # Unix-style listing (most common)
-        unix_pattern = r'^([\-ld])([rwxs\-]{9})\s+(\d+)\s+(\S+)\s+(\S+)\s+(\d+)\s+(\w{3}\s+\d{1,2}\s+(?:\d{1,2}:\d{1,2}|\d{4}))\s+(.+)$'
+        unix_pattern = r"^([\-ld])([rwxs\-]{9})\s+(\d+)\s+(\S+)\s+(\S+)\s+(\d+)\s+(\w{3}\s+\d{1,2}\s+(?:\d{1,2}:\d{1,2}|\d{4}))\s+(.+)$"
 
         # Windows-style listing
-        windows_pattern = r'^(\d{2}-\d{2}-\d{2}\s+\d{2}:\d{2}[AP]M)\s+(<DIR>|\d+)\s+(.+)$'
+        windows_pattern = (
+            r"^(\d{2}-\d{2}-\d{2}\s+\d{2}:\d{2}[AP]M)\s+(<DIR>|\d+)\s+(.+)$"
+        )
 
         # Try Unix style first
         unix_match = re.match(unix_pattern, line)
         if unix_match:
-            file_type = FileType.DIRECTORY if unix_match.group(1) == 'd' else FileType.FILE
+            file_type = (
+                FileType.DIRECTORY if unix_match.group(1) == "d" else FileType.FILE
+            )
             size = int(unix_match.group(6))
 
             # Parse the date (this is simplified and might need adjustment)
             try:
                 date_str = unix_match.group(7)
                 # This is a simplification - proper parsing would need more context
-                modified_time = datetime.strptime(date_str, '%b %d %Y')
+                modified_time = datetime.strptime(date_str, "%b %d %Y")
             except ValueError:
                 try:
-                    modified_time = datetime.strptime(date_str, '%b %d %H:%M')
+                    modified_time = datetime.strptime(date_str, "%b %d %H:%M")
                     # Add current year since it's not in the string
                     current_year = datetime.now().year
                     modified_time = modified_time.replace(year=current_year)
@@ -153,10 +130,7 @@ class FtpClient(Client):
             path = PurePosixPath(file_name)
 
             return FileDescriptor(
-                path=path,
-                filetype=file_type,
-                size=size,
-                modified_time=modified_time
+                path=path, filetype=file_type, size=size, modified_time=modified_time
             )
 
         # Try Windows style
@@ -165,7 +139,7 @@ class FtpClient(Client):
             # Parse the date
             try:
                 date_str = windows_match.group(1)
-                modified_time = datetime.strptime(date_str, '%m-%d-%y %I:%M%p')
+                modified_time = datetime.strptime(date_str, "%m-%d-%y %I:%M%p")
             except ValueError:
                 modified_time = None
 
@@ -173,7 +147,7 @@ class FtpClient(Client):
             file_name = windows_match.group(3)
 
             # Determine if it's a directory
-            is_dir = dir_or_size == '<DIR>'
+            is_dir = dir_or_size == "<DIR>"
             size = 0 if is_dir else int(dir_or_size)
 
             path = PurePosixPath(file_name)
@@ -182,14 +156,14 @@ class FtpClient(Client):
                 path=path,
                 filetype=FileType.DIRECTORY if is_dir else FileType.FILE,
                 size=size,
-                modified_time=modified_time
+                modified_time=modified_time,
             )
 
         # If we couldn't parse the line format, return None
         return None
 
-    def get(self, remote: PurePath, local: Path, progress_callback = None):
-        with open(local, 'wb+') as fp:
+    def get(self, remote: PurePath, local: Path, progress_callback=None):
+        with open(local, "wb+") as fp:
             if progress_callback:
                 bytes_so_far = 0
 
@@ -198,15 +172,16 @@ class FtpClient(Client):
                     bytes_so_far += len(data)
                     fp.write(data)
                     return progress_callback(bytes_so_far)
+
             else:
                 callback = fp.write
 
-            self.ftp_client.retrbinary(f'RETR {remote.as_posix()}', callback)
+            self.ftp_client.retrbinary(f"RETR {remote.as_posix()}", callback)
 
-    def put(self, local: Path, remote: PurePath, progress_callback = None):
-        cmd = f'STOR {remote.as_posix()}'
-        with open(local, 'rb+') as fp:
-            self.ftp_client.voidcmd('TYPE I')
+    def put(self, local: Path, remote: PurePath, progress_callback=None):
+        cmd = f"STOR {remote.as_posix()}"
+        with open(local, "rb+") as fp:
+            self.ftp_client.voidcmd("TYPE I")
             if progress_callback:
                 bytes_so_far = 0
                 with self.ftp_client.transfercmd(cmd, None) as conn:
@@ -216,7 +191,7 @@ class FtpClient(Client):
                         if not progress_callback(bytes_so_far):
                             conn.close()
                             self.ftp_client.voidresp()
-                            raise Exception('Transfer cancelled by user.')
+                            raise Exception("Transfer cancelled by user.")
                 self.ftp_client.voidresp()
             else:
                 with self.ftp_client.transfercmd(cmd, None) as conn:
