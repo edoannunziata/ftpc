@@ -20,7 +20,9 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Topic :: Utilities",
 ]
-dependencies = []
+dependencies = [
+    "windows-curses; sys_platform == 'win32'",
+]
 
 [project.urls]
 Homepage = "https://github.com/edoannunziata/ftpc"
