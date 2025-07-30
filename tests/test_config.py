@@ -93,24 +93,34 @@ class TestConfigSystem(unittest.TestCase):
             "test": {
                 "url": "example.com"
                 # Missing 'type' field
-            }
+            },
+            "valid": {"type": "local"}  # Add a valid remote so config doesn't fail entirely
         }
         config_file = self.create_config_file(config_data)
 
-        with self.assertRaises(ValidationError) as context:
-            Config.from_file(config_file)
-
-        self.assertIn("missing required 'type' field", str(context.exception))
+        config = Config.from_file(config_file)
+        warnings = config.get_warnings()
+        
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("missing required 'type' field", warnings[0])
+        self.assertIn("valid", config.remotes)  # Valid remote should be loaded
+        self.assertNotIn("test", config.remotes)  # Invalid remote should be skipped
 
     def test_config_unknown_type(self):
         """Test configuration with unknown type."""
-        config_data = {"test": {"type": "unknown_type"}}
+        config_data = {
+            "test": {"type": "unknown_type"},
+            "valid": {"type": "local"}  # Add a valid remote so config doesn't fail entirely
+        }
         config_file = self.create_config_file(config_data)
 
-        with self.assertRaises(ValidationError) as context:
-            Config.from_file(config_file)
-
-        self.assertIn("Unknown remote type 'unknown_type'", str(context.exception))
+        config = Config.from_file(config_file)
+        warnings = config.get_warnings()
+        
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("Unknown remote type 'unknown_type'", warnings[0])
+        self.assertIn("valid", config.remotes)  # Valid remote should be loaded
+        self.assertNotIn("test", config.remotes)  # Invalid remote should be skipped
 
     def test_get_remote_success(self):
         """Test successful remote retrieval."""

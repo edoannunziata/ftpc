@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 from pathlib import PurePath
 
 from ftpc.clients.client import Client
@@ -7,7 +8,12 @@ from ftpc.clients.ftpclient import FtpClient
 from ftpc.clients.localclient import LocalClient
 from ftpc.tui import Tui
 from ftpc.config import Config, ConfigError, RemoteNotFoundError, ValidationError
-from ftpc.config.remotes import FtpConfig, LocalConfig, S3Config, AzureConfig, SftpConfig
+from ftpc.config.remotes import (
+    FtpConfig,
+    S3Config,
+    AzureConfig,
+    SftpConfig,
+)
 
 try:
     from ftpc.clients.azureclient import AzureClient
@@ -70,6 +76,12 @@ def main():
             config = Config.from_file(args.config)
         except (ConfigError, ValidationError) as e:
             raise Exit(f"Configuration error: {e}")
+
+        # Show configuration warnings if any
+        warnings = config.get_warnings()
+        if warnings:
+            for warning in warnings:
+                print(f"Warning: {warning}", file=sys.stderr)
 
         # Get the requested remote configuration
         try:

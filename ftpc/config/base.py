@@ -1,7 +1,7 @@
 import tomllib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Any, Type, Optional, IO
+from typing import Dict, Any, Type, Optional, IO, List
 
 
 class ConfigError(Exception):
@@ -49,6 +49,7 @@ class BaseRemoteConfig(ABC):
 @dataclass
 class Config:
     remotes: Dict[str, BaseRemoteConfig]
+    warnings: List[str]
 
     @classmethod
     def from_file(cls, config_file: Optional[IO[bytes]]) -> "Config":
@@ -73,36 +74,40 @@ class Config:
             raise ConfigError(f"Failed to parse TOML configuration: {e}")
 
         remotes = {}
+        warnings = []
 
         for remote_name, remote_data in config_data.items():
-            if not isinstance(remote_data, dict):
-                raise ValidationError(
-                    f"Remote '{remote_name}' configuration must be a dictionary"
-                )
-
-            if "type" not in remote_data:
-                raise ValidationError(
-                    f"Remote '{remote_name}' missing required 'type' field"
-                )
-
-            remote_type = remote_data["type"]
-            config_class = cls._get_config_class(remote_type)
-
-            if config_class is None:
-                raise ValidationError(
-                    f"Unknown remote type '{remote_type}' for remote '{remote_name}'"
-                )
-
             try:
+                if not isinstance(remote_data, dict):
+                    warnings.append(
+                        f"Remote '{remote_name}' configuration must be a dictionary - skipping"
+                    )
+                    continue
+
+                if "type" not in remote_data:
+                    warnings.append(
+                        f"Remote '{remote_name}' missing required 'type' field - skipping"
+                    )
+                    continue
+
+                remote_type = remote_data["type"]
+                config_class = cls._get_config_class(remote_type)
+
+                if config_class is None:
+                    warnings.append(
+                        f"Unknown remote type '{remote_type}' for remote '{remote_name}' - skipping"
+                    )
+                    continue
+
                 remote_config = config_class.from_dict(remote_name, remote_data)
                 remote_config.validate()
                 remotes[remote_name] = remote_config
             except Exception as e:
-                raise ValidationError(
-                    f"Invalid configuration for remote '{remote_name}': {e}"
+                warnings.append(
+                    f"Invalid configuration for remote '{remote_name}': {e} - skipping"
                 )
 
-        config = cls(remotes=remotes)
+        config = cls(remotes=remotes, warnings=warnings)
         config.validate()
         return config
 
@@ -126,7 +131,7 @@ class Config:
             "sftp": SftpConfig,
         }
 
-        return type_mapping.get(remote_type)
+        return type_mapping.get(remote_type)  # type: ignore
 
     def get_remote(self, name: str) -> BaseRemoteConfig:
         """Get a remote configuration by name.
@@ -166,3 +171,7 @@ class Config:
 
     def list_remotes(self) -> Dict[str, str]:
         return {name: config.type for name, config in self.remotes.items()}
+
+    def get_warnings(self) -> List[str]:
+        """Get list of configuration warnings."""
+        return self.warnings.copy()
