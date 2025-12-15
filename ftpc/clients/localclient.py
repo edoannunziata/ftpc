@@ -64,5 +64,13 @@ class LocalClient(Client):
         except (FileNotFoundError, PermissionError, IsADirectoryError):
             return False
 
+    def mkdir(self, remote: PurePath) -> bool:
+        try:
+            dir_path = Path(remote)
+            dir_path.mkdir()
+            return True
+        except (FileExistsError, PermissionError, OSError):
+            return False
+
     def name(self):
         return "Local Storage"

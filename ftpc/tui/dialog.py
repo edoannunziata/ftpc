@@ -60,6 +60,101 @@ def show_confirmation_dialog(
     return key.lower() == "y"
 
 
+def show_input_dialog(
+    stdscr: Any, title: str, prompt: str = "Enter value:"
+) -> str | None:
+    """
+    Show an input dialog that allows the user to type text.
+
+    Args:
+        stdscr: The curses standard screen
+        title: The title of the dialog
+        prompt: The prompt text shown above the input field
+
+    Returns:
+        The entered text, or None if the user cancelled (pressed Escape)
+    """
+    # Get screen dimensions
+    height, width = stdscr.getmaxyx()
+
+    # Calculate dialog dimensions and position
+    dialog_width = min(60, width - 4)
+    dialog_height = 6
+    dialog_y = (height - dialog_height) // 2
+    dialog_x = (width - dialog_width) // 2
+
+    # Create dialog window
+    dialog = curses.newwin(dialog_height, dialog_width, dialog_y, dialog_x)
+    dialog.box()
+
+    # Add title
+    title = title[: dialog_width - 4]  # Truncate if too long
+    title_x = (dialog_width - len(title)) // 2
+    dialog.addstr(0, title_x, title)
+
+    # Add prompt
+    dialog.addstr(1, 2, prompt)
+
+    # Add input field indicator
+    input_y = 2
+    input_x = 2
+    input_width = dialog_width - 4
+    dialog.addstr(input_y, input_x, ">" + " " * (input_width - 1))
+
+    # Add instructions
+    dialog.addstr(4, 2, "Enter to confirm, Esc to cancel")
+
+    dialog.refresh()
+
+    # Show cursor for text input
+    curses.curs_set(1)
+
+    # Clear input buffer
+    curses.flushinp()
+
+    input_text = ""
+    while True:
+        # Position cursor after the ">" and current text
+        try:
+            dialog.move(input_y, input_x + 1 + len(input_text))
+        except curses.error:
+            pass
+        dialog.refresh()
+
+        try:
+            key = stdscr.getkey()
+
+            # Escape cancels
+            if key == "\x1b":
+                curses.curs_set(0)
+                return None
+
+            # Enter confirms
+            if key == "\n":
+                curses.curs_set(0)
+                return input_text if input_text else None
+
+            # Handle backspace/delete
+            if key in ("KEY_BACKSPACE", "\b", "\x7f"):
+                if input_text:
+                    input_text = input_text[:-1]
+                    # Clear and redraw input field
+                    dialog.addstr(input_y, input_x, ">" + " " * (input_width - 1))
+                    dialog.addstr(input_y, input_x + 1, input_text[: input_width - 2])
+
+            # Add printable characters
+            elif len(key) == 1 and ord(key) >= 32:
+                if len(input_text) < input_width - 3:  # Leave room for cursor
+                    input_text += key
+                    dialog.addstr(input_y, input_x + 1, input_text[: input_width - 2])
+
+        except curses.error:
+            pass
+
+    curses.curs_set(0)
+    return None
+
+
 def show_help_dialog(stdscr: Any):
     msg = [
         "Navigation Controls:",
@@ -75,6 +170,7 @@ def show_help_dialog(stdscr: Any):
         "File Operations:",
         "  ENTER      - Enter directory or download file",
         "  d          - Delete selected file",
+        "  m          - Create new directory",
         "  u          - Enter/exit upload mode",
         "",
         "Other Commands:",

@@ -184,6 +184,14 @@ class SftpClient(Client):
         except (SSHException, IOError):
             return False
 
+    def mkdir(self, remote: PurePath) -> bool:
+        try:
+            remote_path = self._format_path(remote)
+            self.sftp_client.mkdir(remote_path)
+            return True
+        except (SSHException, IOError):
+            return False
+
     def _format_path(self, path: PurePath) -> str:
         return path.as_posix()
 

@@ -171,6 +171,19 @@ class AzureClient(Client):
         except (ResourceNotFoundError, HttpResponseError):
             return False
 
+    def mkdir(self, remote: PurePath) -> bool:
+        try:
+            # Format path for Azure
+            azure_path = self._format_path(remote)
+
+            # Get directory client and create the directory
+            directory_client = self.filesystem_client.get_directory_client(azure_path)
+            directory_client.create_directory()
+
+            return True
+        except (ResourceNotFoundError, HttpResponseError):
+            return False
+
     def _format_path(self, path: PurePath) -> str:
         # Remove leading slash if present
         path_str = path.as_posix()

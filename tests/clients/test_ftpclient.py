@@ -283,8 +283,34 @@ class TestFtpClient(unittest.TestCase):
             tls=True,
             name="test"
         )
-        
+
         self.assertTrue(client_tls.tls)
+
+    @patch('ftpc.clients.ftpclient.FTP')
+    def test_mkdir_operation(self, mock_ftp_class):
+        """Test creating a directory."""
+        mock_ftp = Mock()
+        mock_ftp_class.return_value = mock_ftp
+
+        with self.client as client:
+            result = client.mkdir(PurePath("/remote/new_directory"))
+
+        self.assertTrue(result)
+        mock_ftp.mkd.assert_called_once_with("/remote/new_directory")
+
+    @patch('ftpc.clients.ftpclient.FTP')
+    def test_mkdir_failure(self, mock_ftp_class):
+        """Test mkdir operation failure."""
+        mock_ftp = Mock()
+        mock_ftp_class.return_value = mock_ftp
+
+        # Mock mkd to raise an exception
+        mock_ftp.mkd.side_effect = Exception("Directory creation failed")
+
+        with self.client as client:
+            result = client.mkdir(PurePath("/remote/new_directory"))
+
+        self.assertFalse(result)
 
 
 if __name__ == "__main__":
