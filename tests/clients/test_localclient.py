@@ -267,19 +267,64 @@ class TestLocalClient(unittest.TestCase):
         binary_data = bytes(range(256))  # 256 bytes of binary data
         source_file = Path(self.temp_dir) / "binary_source.bin"
         source_file.write_bytes(binary_data)
-        
+
         # Test get operation
         dest_dir = tempfile.mkdtemp()
         dest_file = Path(dest_dir) / "binary_dest.bin"
-        
+
         try:
             self.client.get(PurePath(source_file), dest_file)
-            
+
             # Verify binary data integrity
             self.assertEqual(dest_file.read_bytes(), binary_data)
-            
+
         finally:
             shutil.rmtree(dest_dir)
+
+    def test_mkdir_creates_directory(self):
+        """Test creating a new directory."""
+        new_dir = Path(self.temp_dir) / "new_directory"
+
+        # Verify directory doesn't exist yet
+        self.assertFalse(new_dir.exists())
+
+        # Create directory
+        result = self.client.mkdir(PurePath(new_dir))
+
+        # Verify success
+        self.assertTrue(result)
+        self.assertTrue(new_dir.exists())
+        self.assertTrue(new_dir.is_dir())
+
+    def test_mkdir_existing_directory(self):
+        """Test creating a directory that already exists."""
+        existing_dir = Path(self.temp_dir) / "existing_dir"
+        existing_dir.mkdir()
+
+        # Attempt to create directory that already exists
+        result = self.client.mkdir(PurePath(existing_dir))
+
+        # Should fail and return False
+        self.assertFalse(result)
+
+    def test_mkdir_nested_path_fails(self):
+        """Test creating directory with non-existent parent fails."""
+        nested_dir = Path(self.temp_dir) / "nonexistent_parent" / "new_dir"
+
+        # Attempt to create directory with non-existent parent
+        result = self.client.mkdir(PurePath(nested_dir))
+
+        # Should fail and return False
+        self.assertFalse(result)
+        self.assertFalse(nested_dir.exists())
+
+    def test_mkdir_permission_denied(self):
+        """Test creating directory with permission denied."""
+        # Attempt to create directory in root (should fail)
+        result = self.client.mkdir(PurePath("/root/test_mkdir_permission"))
+
+        # Should fail and return False
+        self.assertFalse(result)
 
 
 if __name__ == "__main__":

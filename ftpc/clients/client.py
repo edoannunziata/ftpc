@@ -61,3 +61,15 @@ class Client(AbstractContextManager, metaclass=ABCMeta):
         Returns:
             True if the file was successfully deleted, False otherwise
         """
+
+    @abstractmethod
+    def mkdir(self, remote: PurePath) -> bool:
+        """
+        Create a directory at the specified remote path.
+
+        Args:
+            remote: The remote path where the directory should be created
+
+        Returns:
+            True if the directory was successfully created, False otherwise
+        """

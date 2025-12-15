@@ -205,3 +205,10 @@ class FtpClient(Client):
             return True
         except Exception:
             return False
+
+    def mkdir(self, remote: PurePath) -> bool:
+        try:
+            self.ftp_client.mkd(remote.as_posix())
+            return True
+        except Exception:
+            return False

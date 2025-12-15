@@ -207,6 +207,18 @@ class S3Client(Client):
         except ClientError:
             return False
 
+    def mkdir(self, remote: PurePath) -> bool:
+        try:
+            # S3 doesn't have real directories, but we can create a placeholder
+            # object with a trailing slash to simulate a directory
+            s3_path = self._format_path(remote)
+            if not s3_path.endswith("/"):
+                s3_path += "/"
+            self.s3_client.put_object(Bucket=self.bucket_name, Key=s3_path, Body=b"")
+            return True
+        except ClientError:
+            return False
+
     def _format_path(self, path: PurePath) -> str:
         path_str = path.as_posix()
         if path_str == "/":

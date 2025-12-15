@@ -7,7 +7,7 @@ from ftpc.clients.client import Client
 from ftpc.clients.localclient import LocalClient
 from ftpc.filedescriptor import FileDescriptor
 from ftpc.tui.lswindow import LsWindow
-from ftpc.tui.dialog import show_help_dialog, show_confirmation_dialog, ProgressDialog
+from ftpc.tui.dialog import show_help_dialog, show_confirmation_dialog, show_input_dialog, ProgressDialog
 
 
 class TuiMode(IntEnum):
@@ -248,6 +248,32 @@ class Tui:
             self.status_message = f"Error deleting {file_desc.name}: {str(e)}"
             return False
 
+    def make_directory(self) -> bool:
+        """Create a new directory in the current location."""
+        # Show input dialog to get directory name
+        dir_name = show_input_dialog(
+            self.stdscr, "Create Directory", "Enter directory name:"
+        )
+
+        if not dir_name:
+            self.status_message = "Directory creation cancelled"
+            return False
+
+        try:
+            remote_path = self.cwd / dir_name
+
+            if self.client.mkdir(remote_path):
+                self.status_message = f"Created directory: {dir_name}"
+                self.refresh_directory_listing()
+                return True
+            else:
+                self.status_message = f"Failed to create directory: {dir_name}"
+                return False
+
+        except Exception as e:
+            self.status_message = f"Error creating directory: {str(e)}"
+            return False
+
     def enter_upload_mode(self):
         self.remote_client = self.client
         self.remote_cwd = self.cwd
@@ -414,6 +440,14 @@ class Tui:
                                 self.stdscr.refresh()
                                 self.lswindow.draw_window()
                                 self.refresh_directory_listing()
+                    case "m":
+                        if self.mode == TuiMode.NORMAL:  # Only allow mkdir in normal mode
+                            self.make_directory()
+                            # Redraw everything after the operation
+                            self.stdscr.clear()
+                            self.stdscr.refresh()
+                            self.lswindow.draw_window()
+                            self.refresh_directory_listing()
                     case "KEY_RESIZE":
                         # Additional resize handling if curses catches it directly
                         self._handle_resize(None, None)
