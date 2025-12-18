@@ -6,7 +6,7 @@ from pathlib import PurePath
 from ftpc.clients.client import Client
 from ftpc.clients.ftpclient import FtpClient
 from ftpc.clients.localclient import LocalClient
-from ftpc.tui import Tui
+from ftpc.tui import Tui, RemoteSelector
 from ftpc.config import Config, ConfigError, RemoteNotFoundError, ValidationError
 from ftpc.config.remotes import (
     FtpConfig,
@@ -67,7 +67,7 @@ def main():
     default_config_path = os.path.expanduser("~/.ftpcconf.toml")
 
     parser.add_argument("--config", type=config_file_type, default=default_config_path)
-    parser.add_argument("remote")
+    parser.add_argument("remote", nargs="?", default=None)
     parser.add_argument("path", nargs="?", const="/", default="/")
 
     args = parser.parse_args()
@@ -90,6 +90,15 @@ def main():
         if warnings:
             for warning in warnings:
                 print(f"Warning: {warning}", file=sys.stderr)
+
+        # If no remote specified, show interactive selection menu
+        if args.remote is None:
+            selector = RemoteSelector(config.remotes)
+            result = selector.start()
+            if result is None:
+                # User quit the selector
+                return
+            args.remote, args.path = result
 
         # Get the requested remote configuration
         try:
