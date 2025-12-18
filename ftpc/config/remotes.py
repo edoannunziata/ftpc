@@ -229,3 +229,48 @@ class SftpConfig(BaseRemoteConfig):
 
         if self.proxy:
             self.proxy.validate()
+
+
+@dataclass
+class BlobConfig(BaseRemoteConfig):
+    """Azure Blob Storage configuration."""
+
+    url: str
+    container: str
+    connection_string: Optional[str] = None
+    account_key: Optional[str] = None
+    proxy: Optional[ProxyConfig] = None
+
+    @classmethod
+    def from_dict(cls, name: str, data: Dict[str, Any]) -> "BlobConfig":
+        if "url" not in data:
+            raise ValidationError("Blob configuration requires 'url' field")
+        if "container" not in data:
+            raise ValidationError("Blob configuration requires 'container' field")
+
+        proxy = None
+        if "proxy" in data and isinstance(data["proxy"], dict):
+            proxy = ProxyConfig.from_dict(data["proxy"])
+
+        return cls(
+            name=name,
+            type="blob",
+            url=data["url"],
+            container=data["container"],
+            connection_string=data.get("connection_string"),
+            account_key=data.get("account_key"),
+            proxy=proxy,
+        )
+
+    def validate(self) -> None:
+        if self.type != "blob":
+            raise ValidationError(f"Expected type 'blob', got '{self.type}'")
+
+        if not self.url:
+            raise ValidationError("Blob URL cannot be empty")
+
+        if not self.container:
+            raise ValidationError("Blob container cannot be empty")
+
+        if self.proxy:
+            self.proxy.validate()

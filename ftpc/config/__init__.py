@@ -8,6 +8,7 @@ from .remotes import (
     AzureConfig,
     SftpConfig,
     ProxyConfig,
+    BlobConfig,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "AzureConfig",
     "SftpConfig",
     "ProxyConfig",
+    "BlobConfig",
 ]

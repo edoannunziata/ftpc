@@ -13,6 +13,7 @@ from ftpc.config.remotes import (
     S3Config,
     AzureConfig,
     SftpConfig,
+    BlobConfig,
 )
 
 try:
@@ -21,6 +22,13 @@ try:
     AZURE_AVAILABLE = True
 except ImportError:
     AZURE_AVAILABLE = False
+
+try:
+    from ftpc.clients.azureblobclient import AzureBlobClient
+
+    BLOB_AVAILABLE = True
+except ImportError:
+    BLOB_AVAILABLE = False
 
 try:
     from ftpc.clients.s3client import S3Client
@@ -153,6 +161,22 @@ def main():
                     key_filename=sftp_config.key_filename,
                     name=sftp_config.name,
                     proxy_config=sftp_config.proxy,
+                )
+            case "blob":
+                if not BLOB_AVAILABLE:
+                    raise Exit(
+                        "fatal error: Azure Blob support requires additional dependencies.\n"
+                        "Install with: pip install azure-storage-blob azure-identity"
+                    )
+
+                blob_config = remote_config  # type: BlobConfig
+                client = AzureBlobClient(
+                    blob_config.url,
+                    container_name=blob_config.container,
+                    connection_string=blob_config.connection_string,
+                    account_key=blob_config.account_key,
+                    name=blob_config.name,
+                    proxy_config=blob_config.proxy,
                 )
             case _:
                 raise Exit(

@@ -33,6 +33,10 @@ azure = [
     "azure-storage-file-datalake>=12.8.0",
     "azure-identity>=1.10.0",
 ]
+blob = [
+    "azure-storage-blob>=12.14.0",
+    "azure-identity>=1.10.0",
+]
 s3 = [
     "boto3>=1.28.0",
 ]
@@ -44,6 +48,7 @@ proxy = [
 ]
 all = [
     "azure-storage-file-datalake>=12.8.0",
+    "azure-storage-blob>=12.14.0",
     "azure-identity>=1.10.0",
     "boto3>=1.28.0",
     "paramiko>=3.0.0",

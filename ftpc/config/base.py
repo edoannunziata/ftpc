@@ -121,7 +121,7 @@ class Config:
         Returns:
             Configuration class for the remote type, or None if unknown
         """
-        from .remotes import LocalConfig, FtpConfig, S3Config, AzureConfig, SftpConfig
+        from .remotes import LocalConfig, FtpConfig, S3Config, AzureConfig, SftpConfig, BlobConfig
 
         type_mapping = {
             "local": LocalConfig,
@@ -129,6 +129,7 @@ class Config:
             "s3": S3Config,
             "azure": AzureConfig,
             "sftp": SftpConfig,
+            "blob": BlobConfig,
         }
 
         return type_mapping.get(remote_type)  # type: ignore

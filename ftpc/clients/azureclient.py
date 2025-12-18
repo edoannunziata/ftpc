@@ -91,10 +91,10 @@ class AzureClient(Client):
         """Build SOCKS5 proxy URL for Azure SDK."""
         if self.proxy_config.username and self.proxy_config.password:
             return (
-                f"socks5://{self.proxy_config.username}:{self.proxy_config.password}"
+                f"socks5h://{self.proxy_config.username}:{self.proxy_config.password}"
                 f"@{self.proxy_config.host}:{self.proxy_config.port}"
             )
-        return f"socks5://{self.proxy_config.host}:{self.proxy_config.port}"
+        return f"socks5h://{self.proxy_config.host}:{self.proxy_config.port}"
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.filesystem_client = None

@@ -11,6 +11,7 @@ from ftpc.config.remotes import (
     AzureConfig,
     SftpConfig,
     ProxyConfig,
+    BlobConfig,
 )
 
 
@@ -587,6 +588,100 @@ class TestRemoteConfigsWithProxy(unittest.TestCase):
             config.validate()
 
         self.assertIn("Proxy port must be an integer", str(context.exception))
+
+
+class TestBlobConfig(unittest.TestCase):
+    """Test cases for BlobConfig."""
+
+    def test_blob_config_basic(self):
+        """Test BlobConfig creation and validation."""
+        data = {
+            "type": "blob",
+            "url": "https://mystorageaccount.blob.core.windows.net",
+            "container": "mycontainer",
+            "account_key": "key123",
+        }
+
+        config = BlobConfig.from_dict("test", data)
+
+        self.assertEqual(config.name, "test")
+        self.assertEqual(config.type, "blob")
+        self.assertEqual(config.url, "https://mystorageaccount.blob.core.windows.net")
+        self.assertEqual(config.container, "mycontainer")
+        self.assertEqual(config.account_key, "key123")
+
+        # Validation should pass
+        config.validate()
+
+    def test_blob_config_with_connection_string(self):
+        """Test BlobConfig with connection string."""
+        data = {
+            "type": "blob",
+            "url": "https://mystorageaccount.blob.core.windows.net",
+            "container": "mycontainer",
+            "connection_string": "DefaultEndpointsProtocol=https;AccountName=test",
+        }
+
+        config = BlobConfig.from_dict("test", data)
+
+        self.assertEqual(config.connection_string, "DefaultEndpointsProtocol=https;AccountName=test")
+        self.assertIsNone(config.account_key)
+
+        # Validation should pass
+        config.validate()
+
+    def test_blob_config_missing_url(self):
+        """Test BlobConfig with missing URL."""
+        with self.assertRaises(ValidationError) as context:
+            BlobConfig.from_dict("test", {"type": "blob", "container": "c"})
+
+        self.assertIn("requires 'url' field", str(context.exception))
+
+    def test_blob_config_missing_container(self):
+        """Test BlobConfig with missing container."""
+        with self.assertRaises(ValidationError) as context:
+            BlobConfig.from_dict("test", {"type": "blob", "url": "https://example.com"})
+
+        self.assertIn("requires 'container' field", str(context.exception))
+
+    def test_blob_config_with_proxy(self):
+        """Test BlobConfig with proxy settings."""
+        data = {
+            "type": "blob",
+            "url": "https://mystorageaccount.blob.core.windows.net",
+            "container": "mycontainer",
+            "proxy": {
+                "host": "proxy.example.com",
+                "port": 1080,
+            },
+        }
+
+        config = BlobConfig.from_dict("test", data)
+
+        self.assertIsNotNone(config.proxy)
+        self.assertEqual(config.proxy.host, "proxy.example.com")
+        self.assertEqual(config.proxy.port, 1080)
+
+        # Validation should pass
+        config.validate()
+
+    def test_blob_config_empty_url(self):
+        """Test BlobConfig with empty URL."""
+        config = BlobConfig(name="test", type="blob", url="", container="c")
+
+        with self.assertRaises(ValidationError) as context:
+            config.validate()
+
+        self.assertIn("Blob URL cannot be empty", str(context.exception))
+
+    def test_blob_config_empty_container(self):
+        """Test BlobConfig with empty container."""
+        config = BlobConfig(name="test", type="blob", url="https://example.com", container="")
+
+        with self.assertRaises(ValidationError) as context:
+            config.validate()
+
+        self.assertIn("Blob container cannot be empty", str(context.exception))
 
 
 if __name__ == "__main__":
