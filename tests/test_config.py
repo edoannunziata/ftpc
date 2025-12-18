@@ -10,6 +10,7 @@ from ftpc.config.remotes import (
     S3Config,
     AzureConfig,
     SftpConfig,
+    ProxyConfig,
 )
 
 
@@ -397,6 +398,195 @@ class TestRemoteConfigs(unittest.TestCase):
         self.assertIn(
             "requires either 'password' or 'key_filename'", str(context.exception)
         )
+
+
+class TestProxyConfig(unittest.TestCase):
+    """Test cases for proxy configuration."""
+
+    def test_proxy_config_basic(self):
+        """Test ProxyConfig creation and validation."""
+        data = {
+            "host": "proxy.example.com",
+            "port": 1080,
+            "username": "proxyuser",
+            "password": "proxypass",
+        }
+
+        config = ProxyConfig.from_dict(data)
+
+        self.assertEqual(config.host, "proxy.example.com")
+        self.assertEqual(config.port, 1080)
+        self.assertEqual(config.username, "proxyuser")
+        self.assertEqual(config.password, "proxypass")
+
+        # Validation should pass
+        config.validate()
+
+    def test_proxy_config_defaults(self):
+        """Test ProxyConfig with default values."""
+        data = {"host": "proxy.example.com"}
+
+        config = ProxyConfig.from_dict(data)
+
+        self.assertEqual(config.host, "proxy.example.com")
+        self.assertEqual(config.port, 1080)  # Default port
+        self.assertIsNone(config.username)
+        self.assertIsNone(config.password)
+
+        # Validation should pass
+        config.validate()
+
+    def test_proxy_config_missing_host(self):
+        """Test ProxyConfig with missing host."""
+        data = {"port": 1080}
+
+        with self.assertRaises(ValidationError) as context:
+            ProxyConfig.from_dict(data)
+
+        self.assertIn("requires 'host' field", str(context.exception))
+
+    def test_proxy_config_invalid_port(self):
+        """Test ProxyConfig with invalid port."""
+        config = ProxyConfig(host="proxy.example.com", port=70000)
+
+        with self.assertRaises(ValidationError) as context:
+            config.validate()
+
+        self.assertIn(
+            "Proxy port must be an integer between 1 and 65535", str(context.exception)
+        )
+
+    def test_proxy_config_empty_host(self):
+        """Test ProxyConfig with empty host."""
+        config = ProxyConfig(host="", port=1080)
+
+        with self.assertRaises(ValidationError) as context:
+            config.validate()
+
+        self.assertIn("Proxy host cannot be empty", str(context.exception))
+
+
+class TestRemoteConfigsWithProxy(unittest.TestCase):
+    """Test cases for remote configurations with proxy settings."""
+
+    def test_ftp_config_with_proxy(self):
+        """Test FtpConfig with proxy settings."""
+        data = {
+            "type": "ftp",
+            "url": "ftp://example.com",
+            "proxy": {
+                "host": "proxy.example.com",
+                "port": 1080,
+                "username": "proxyuser",
+                "password": "proxypass",
+            },
+        }
+
+        config = FtpConfig.from_dict("test", data)
+
+        self.assertIsNotNone(config.proxy)
+        self.assertEqual(config.proxy.host, "proxy.example.com")
+        self.assertEqual(config.proxy.port, 1080)
+        self.assertEqual(config.proxy.username, "proxyuser")
+        self.assertEqual(config.proxy.password, "proxypass")
+
+        # Validation should pass
+        config.validate()
+
+    def test_sftp_config_with_proxy(self):
+        """Test SftpConfig with proxy settings."""
+        data = {
+            "type": "sftp",
+            "url": "sftp.example.com",
+            "username": "user",
+            "password": "pass",
+            "proxy": {
+                "host": "socks.example.com",
+                "port": 9050,
+            },
+        }
+
+        config = SftpConfig.from_dict("test", data)
+
+        self.assertIsNotNone(config.proxy)
+        self.assertEqual(config.proxy.host, "socks.example.com")
+        self.assertEqual(config.proxy.port, 9050)
+
+        # Validation should pass
+        config.validate()
+
+    def test_s3_config_with_proxy(self):
+        """Test S3Config with proxy settings."""
+        data = {
+            "type": "s3",
+            "bucket_name": "my-bucket",
+            "proxy": {
+                "host": "localhost",
+                "port": 9050,
+            },
+        }
+
+        config = S3Config.from_dict("test", data)
+
+        self.assertIsNotNone(config.proxy)
+        self.assertEqual(config.proxy.host, "localhost")
+        self.assertEqual(config.proxy.port, 9050)
+
+        # Validation should pass
+        config.validate()
+
+    def test_azure_config_with_proxy(self):
+        """Test AzureConfig with proxy settings."""
+        data = {
+            "type": "azure",
+            "url": "mystorageaccount.dfs.core.windows.net",
+            "filesystem": "myfilesystem",
+            "proxy": {
+                "host": "corporate-proxy.local",
+                "port": 1080,
+            },
+        }
+
+        config = AzureConfig.from_dict("test", data)
+
+        self.assertIsNotNone(config.proxy)
+        self.assertEqual(config.proxy.host, "corporate-proxy.local")
+        self.assertEqual(config.proxy.port, 1080)
+
+        # Validation should pass
+        config.validate()
+
+    def test_config_without_proxy(self):
+        """Test that configs without proxy have None proxy field."""
+        data = {
+            "type": "ftp",
+            "url": "ftp://example.com",
+        }
+
+        config = FtpConfig.from_dict("test", data)
+
+        self.assertIsNone(config.proxy)
+
+        # Validation should pass
+        config.validate()
+
+    def test_config_with_invalid_proxy(self):
+        """Test config with invalid proxy settings."""
+        data = {
+            "type": "ftp",
+            "url": "ftp://example.com",
+            "proxy": {
+                "host": "proxy.example.com",
+                "port": 70000,  # Invalid port
+            },
+        }
+
+        config = FtpConfig.from_dict("test", data)
+
+        with self.assertRaises(ValidationError) as context:
+            config.validate()
+
+        self.assertIn("Proxy port must be an integer", str(context.exception))
 
 
 if __name__ == "__main__":

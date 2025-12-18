@@ -7,17 +7,19 @@ from .remotes import (
     S3Config,
     AzureConfig,
     SftpConfig,
+    ProxyConfig,
 )
 
 __all__ = [
     "Config",
     "BaseRemoteConfig",
-    "ConfigError", 
+    "ConfigError",
     "RemoteNotFoundError",
     "ValidationError",
     "LocalConfig",
     "FtpConfig",
-    "S3Config", 
+    "S3Config",
     "AzureConfig",
     "SftpConfig",
+    "ProxyConfig",
 ]

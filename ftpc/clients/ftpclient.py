@@ -1,30 +1,189 @@
 from ftplib import FTP, FTP_TLS
 from pathlib import Path, PurePosixPath, PurePath
 from datetime import datetime
-from typing import List
+from typing import List, Optional, TYPE_CHECKING
 import re
+import socket
 
 from ftpc.clients.client import Client
 from ftpc.filedescriptor import FileDescriptor, FileType
 
+if TYPE_CHECKING:
+    from ftpc.config import ProxyConfig
+
+try:
+    import socks
+
+    SOCKS_AVAILABLE = True
+except ImportError:
+    SOCKS_AVAILABLE = False
+
+
+class Socks5FTP(FTP):
+    """FTP client that routes connections through a SOCKS5 proxy."""
+
+    def __init__(
+        self,
+        host: str = "",
+        proxy_host: str = "",
+        proxy_port: int = 1080,
+        proxy_username: Optional[str] = None,
+        proxy_password: Optional[str] = None,
+        **kwargs,
+    ):
+        self.proxy_host = proxy_host
+        self.proxy_port = proxy_port
+        self.proxy_username = proxy_username
+        self.proxy_password = proxy_password
+        super().__init__(host, **kwargs)
+
+    def connect(self, host: str = "", port: int = 0, timeout: float = -999, source_address=None):
+        """Connect to FTP server through SOCKS5 proxy."""
+        if not host:
+            host = self.host
+        if not port:
+            port = self.port
+        if timeout == -999:
+            timeout = self.timeout
+
+        self.host = host
+        self.port = port
+
+        # Create SOCKS5 socket
+        self.sock = socks.socksocket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.set_proxy(
+            socks.SOCKS5,
+            self.proxy_host,
+            self.proxy_port,
+            username=self.proxy_username,
+            password=self.proxy_password,
+        )
+        if timeout is not None and timeout >= 0:
+            self.sock.settimeout(timeout)
+        self.sock.connect((host, port))
+        self.af = self.sock.family
+        self.file = self.sock.makefile("r", encoding=self.encoding)
+        self.welcome = self.getresp()
+        return self.welcome
+
+    def ntransfercmd(self, cmd, rest=None):
+        """Override to route data connections through SOCKS5 proxy."""
+        size = None
+        if self.passiveserver:
+            host, port = self.makepasv()
+            # Create SOCKS5 socket for data connection
+            conn = socks.socksocket(socket.AF_INET, socket.SOCK_STREAM)
+            conn.set_proxy(
+                socks.SOCKS5,
+                self.proxy_host,
+                self.proxy_port,
+                username=self.proxy_username,
+                password=self.proxy_password,
+            )
+            conn.settimeout(self.timeout)
+            conn.connect((host, port))
+            try:
+                if rest is not None:
+                    self.sendcmd("REST %s" % rest)
+                resp = self.sendcmd(cmd)
+                if resp[0] == "2":
+                    resp = self.getresp()
+                if resp[0] != "1":
+                    raise Exception(resp)
+            except:
+                conn.close()
+                raise
+            if resp[:3] == "150":
+                match = re.search(r"\((\d+) bytes\)", resp)
+                if match:
+                    size = int(match.group(1))
+        else:
+            # Active mode not supported through SOCKS proxy
+            raise RuntimeError("Active FTP mode is not supported through SOCKS5 proxy")
+        return conn, size
+
+
+class Socks5FTP_TLS(FTP_TLS, Socks5FTP):
+    """FTPS client that routes connections through a SOCKS5 proxy."""
+
+    def __init__(
+        self,
+        host: str = "",
+        proxy_host: str = "",
+        proxy_port: int = 1080,
+        proxy_username: Optional[str] = None,
+        proxy_password: Optional[str] = None,
+        **kwargs,
+    ):
+        self.proxy_host = proxy_host
+        self.proxy_port = proxy_port
+        self.proxy_username = proxy_username
+        self.proxy_password = proxy_password
+        FTP_TLS.__init__(self, host, **kwargs)
+
+    def ntransfercmd(self, cmd, rest=None):
+        """Override to route data connections through SOCKS5 proxy and wrap with TLS."""
+        conn, size = Socks5FTP.ntransfercmd(self, cmd, rest)
+        if self._prot_p:
+            conn = self.context.wrap_socket(
+                conn, server_hostname=self.host, session=self.sock.session
+            )
+        return conn, size
+
 
 class FtpClient(Client):
-    def __init__(self, url, *, tls=True, username="", password="", name=""):
+    def __init__(
+        self,
+        url,
+        *,
+        tls=True,
+        username="",
+        password="",
+        name="",
+        proxy_config: Optional["ProxyConfig"] = None,
+    ):
         self.url = url
         self.tls = tls
         self.username = username
         self.password = password
         self.ftp_client = None
         self._name = name if name else url
+        self.proxy_config = proxy_config
 
     def __enter__(self):
-        if self.tls:
-            self.ftp_client = FTP_TLS(self.url)
-            self.ftp_client.login(user=self.username, passwd=self.password)
-            self.ftp_client.prot_p()
+        if self.proxy_config:
+            if not SOCKS_AVAILABLE:
+                raise RuntimeError(
+                    "PySocks is required for SOCKS5 proxy support. "
+                    "Install with: pip install pysocks"
+                )
+            if self.tls:
+                self.ftp_client = Socks5FTP_TLS(
+                    self.url,
+                    proxy_host=self.proxy_config.host,
+                    proxy_port=self.proxy_config.port,
+                    proxy_username=self.proxy_config.username,
+                    proxy_password=self.proxy_config.password,
+                )
+                self.ftp_client.login(user=self.username, passwd=self.password)
+                self.ftp_client.prot_p()
+            else:
+                self.ftp_client = Socks5FTP(
+                    self.url,
+                    proxy_host=self.proxy_config.host,
+                    proxy_port=self.proxy_config.port,
+                    proxy_username=self.proxy_config.username,
+                    proxy_password=self.proxy_config.password,
+                )
+                self.ftp_client.login(user=self.username, passwd=self.password)
         else:
-            self.ftp_client = FTP(self.url)
-            self.ftp_client.login(user=self.username, passwd=self.password)
+            if self.tls:
+                self.ftp_client = FTP_TLS(self.url)
+                self.ftp_client.login(user=self.username, passwd=self.password)
+                self.ftp_client.prot_p()
+            else:
+                self.ftp_client = FTP(self.url)
+                self.ftp_client.login(user=self.username, passwd=self.password)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):

@@ -5,6 +5,35 @@ from .base import BaseRemoteConfig, ValidationError
 
 
 @dataclass
+class ProxyConfig:
+    """SOCKS5 proxy configuration."""
+
+    host: str
+    port: int = 1080
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ProxyConfig":
+        if "host" not in data:
+            raise ValidationError("Proxy configuration requires 'host' field")
+
+        return cls(
+            host=data["host"],
+            port=data.get("port", 1080),
+            username=data.get("username"),
+            password=data.get("password"),
+        )
+
+    def validate(self) -> None:
+        if not self.host:
+            raise ValidationError("Proxy host cannot be empty")
+
+        if not isinstance(self.port, int) or self.port < 1 or self.port > 65535:
+            raise ValidationError("Proxy port must be an integer between 1 and 65535")
+
+
+@dataclass
 class LocalConfig(BaseRemoteConfig):
     @classmethod
     def from_dict(cls, name: str, data: Dict[str, Any]) -> "LocalConfig":
@@ -21,11 +50,16 @@ class FtpConfig(BaseRemoteConfig):
     username: str = "anonymous"
     password: str = "anonymous@"
     tls: bool = False
+    proxy: Optional[ProxyConfig] = None
 
     @classmethod
     def from_dict(cls, name: str, data: Dict[str, Any]) -> "FtpConfig":
         if "url" not in data:
             raise ValidationError("FTP configuration requires 'url' field")
+
+        proxy = None
+        if "proxy" in data and isinstance(data["proxy"], dict):
+            proxy = ProxyConfig.from_dict(data["proxy"])
 
         return cls(
             name=name,
@@ -34,6 +68,7 @@ class FtpConfig(BaseRemoteConfig):
             username=data.get("username", "anonymous"),
             password=data.get("password", "anonymous@"),
             tls=data.get("tls", False),
+            proxy=proxy,
         )
 
     def validate(self) -> None:
@@ -46,6 +81,9 @@ class FtpConfig(BaseRemoteConfig):
         if not isinstance(self.tls, bool):
             raise ValidationError("TLS setting must be a boolean")
 
+        if self.proxy:
+            self.proxy.validate()
+
 
 @dataclass
 class S3Config(BaseRemoteConfig):
@@ -55,6 +93,7 @@ class S3Config(BaseRemoteConfig):
     endpoint_url: Optional[str] = None
     aws_access_key_id: Optional[str] = None
     aws_secret_access_key: Optional[str] = None
+    proxy: Optional[ProxyConfig] = None
 
     @classmethod
     def from_dict(cls, name: str, data: Dict[str, Any]) -> "S3Config":
@@ -63,6 +102,10 @@ class S3Config(BaseRemoteConfig):
 
         if url and url.startswith("s3://"):
             bucket_name = url[5:]  # Remove 's3://' prefix
+
+        proxy = None
+        if "proxy" in data and isinstance(data["proxy"], dict):
+            proxy = ProxyConfig.from_dict(data["proxy"])
 
         return cls(
             name=name,
@@ -73,6 +116,7 @@ class S3Config(BaseRemoteConfig):
             endpoint_url=data.get("endpoint_url"),
             aws_access_key_id=data.get("aws_access_key_id"),
             aws_secret_access_key=data.get("aws_secret_access_key"),
+            proxy=proxy,
         )
 
     def validate(self) -> None:
@@ -83,6 +127,9 @@ class S3Config(BaseRemoteConfig):
             raise ValidationError(
                 "S3 configuration requires either 'url' or 'bucket_name'"
             )
+
+        if self.proxy:
+            self.proxy.validate()
 
     def get_bucket_name(self) -> str:
         if self.bucket_name:
@@ -99,6 +146,7 @@ class AzureConfig(BaseRemoteConfig):
     filesystem: str
     connection_string: Optional[str] = None
     account_key: Optional[str] = None
+    proxy: Optional[ProxyConfig] = None
 
     @classmethod
     def from_dict(cls, name: str, data: Dict[str, Any]) -> "AzureConfig":
@@ -107,6 +155,10 @@ class AzureConfig(BaseRemoteConfig):
         if "filesystem" not in data:
             raise ValidationError("Azure configuration requires 'filesystem' field")
 
+        proxy = None
+        if "proxy" in data and isinstance(data["proxy"], dict):
+            proxy = ProxyConfig.from_dict(data["proxy"])
+
         return cls(
             name=name,
             type="azure",
@@ -114,6 +166,7 @@ class AzureConfig(BaseRemoteConfig):
             filesystem=data["filesystem"],
             connection_string=data.get("connection_string"),
             account_key=data.get("account_key"),
+            proxy=proxy,
         )
 
     def validate(self) -> None:
@@ -126,6 +179,9 @@ class AzureConfig(BaseRemoteConfig):
         if not self.filesystem:
             raise ValidationError("Azure filesystem cannot be empty")
 
+        if self.proxy:
+            self.proxy.validate()
+
 
 @dataclass
 class SftpConfig(BaseRemoteConfig):
@@ -134,11 +190,16 @@ class SftpConfig(BaseRemoteConfig):
     username: Optional[str] = None
     password: Optional[str] = None
     key_filename: Optional[str] = None
+    proxy: Optional[ProxyConfig] = None
 
     @classmethod
     def from_dict(cls, name: str, data: Dict[str, Any]) -> "SftpConfig":
         if "url" not in data:
             raise ValidationError("SFTP configuration requires 'url' field")
+
+        proxy = None
+        if "proxy" in data and isinstance(data["proxy"], dict):
+            proxy = ProxyConfig.from_dict(data["proxy"])
 
         return cls(
             name=name,
@@ -148,6 +209,7 @@ class SftpConfig(BaseRemoteConfig):
             username=data.get("username"),
             password=data.get("password"),
             key_filename=data.get("key_filename"),
+            proxy=proxy,
         )
 
     def validate(self) -> None:
@@ -164,3 +226,6 @@ class SftpConfig(BaseRemoteConfig):
             raise ValidationError(
                 "SFTP configuration requires either 'password' or 'key_filename'"
             )
+
+        if self.proxy:
+            self.proxy.validate()

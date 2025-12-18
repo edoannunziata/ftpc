@@ -1,12 +1,16 @@
 from pathlib import Path, PurePath, PurePosixPath
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, TYPE_CHECKING
 
 from azure.storage.filedatalake import DataLakeServiceClient
 from azure.core.exceptions import ResourceNotFoundError, HttpResponseError
+from azure.core.pipeline.transport import RequestsTransport
 from azure.identity import DefaultAzureCredential
 
 from ftpc.clients.client import Client
 from ftpc.filedescriptor import FileDescriptor, FileType
+
+if TYPE_CHECKING:
+    from ftpc.config import ProxyConfig
 
 
 class AzureClient(Client):
@@ -19,6 +23,7 @@ class AzureClient(Client):
         account_key=None,
         credential=None,
         name=None,
+        proxy_config: Optional["ProxyConfig"] = None,
     ):
         """
         Initialize the Azure Data Lake Storage Gen2 client.
@@ -30,6 +35,7 @@ class AzureClient(Client):
             account_key: Optional account key for authentication
             credential: Optional credential for authentication (e.g., DefaultAzureCredential())
             name: Optional human-readable name for this client
+            proxy_config: Optional SOCKS5 proxy configuration
         """
         self.account_url = account_url
         self.filesystem_name = filesystem_name
@@ -37,6 +43,7 @@ class AzureClient(Client):
         self.account_key = account_key
         self._credential = credential
         self._name = name if name else f"Azure:{filesystem_name}"
+        self.proxy_config = proxy_config
 
         # These will be initialized in __enter__
         self.service_client = None
@@ -47,18 +54,30 @@ class AzureClient(Client):
         if not self._credential and not self.connection_string and not self.account_key:
             self._credential = DefaultAzureCredential()
 
+        # Create transport with proxy if configured
+        transport = None
+        if self.proxy_config:
+            proxy_url = self._build_proxy_url()
+            proxies = {"http": proxy_url, "https": proxy_url}
+            transport = RequestsTransport(proxies=proxies)
+
         # Create service client based on provided auth method
         if self.connection_string:
             self.service_client = DataLakeServiceClient.from_connection_string(
-                conn_str=self.connection_string
+                conn_str=self.connection_string,
+                transport=transport,
             )
         elif self.account_key:
             self.service_client = DataLakeServiceClient(
-                account_url=self.account_url, credential=self.account_key
+                account_url=self.account_url,
+                credential=self.account_key,
+                transport=transport,
             )
         else:
             self.service_client = DataLakeServiceClient(
-                account_url=self.account_url, credential=self._credential
+                account_url=self.account_url,
+                credential=self._credential,
+                transport=transport,
             )
 
         # Get filesystem (container) client
@@ -67,6 +86,15 @@ class AzureClient(Client):
         )
 
         return self
+
+    def _build_proxy_url(self) -> str:
+        """Build SOCKS5 proxy URL for Azure SDK."""
+        if self.proxy_config.username and self.proxy_config.password:
+            return (
+                f"socks5://{self.proxy_config.username}:{self.proxy_config.password}"
+                f"@{self.proxy_config.host}:{self.proxy_config.port}"
+            )
+        return f"socks5://{self.proxy_config.host}:{self.proxy_config.port}"
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.filesystem_client = None

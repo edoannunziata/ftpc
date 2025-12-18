@@ -100,6 +100,7 @@ def main():
                     username=ftp_config.username,
                     password=ftp_config.password,
                     name=ftp_config.name,
+                    proxy_config=ftp_config.proxy,
                 )
             case "local":
                 client = LocalClient()
@@ -117,6 +118,7 @@ def main():
                     connection_string=azure_config.connection_string,
                     account_key=azure_config.account_key,
                     name=azure_config.name,
+                    proxy_config=azure_config.proxy,
                 )
             case "s3":
                 if not S3_AVAILABLE:
@@ -133,6 +135,7 @@ def main():
                     aws_secret_access_key=s3_config.aws_secret_access_key,
                     region_name=s3_config.region_name,
                     name=s3_config.name,
+                    proxy_config=s3_config.proxy,
                 )
             case "sftp":
                 if not SFTP_AVAILABLE:
@@ -149,6 +152,7 @@ def main():
                     password=sftp_config.password,
                     key_filename=sftp_config.key_filename,
                     name=sftp_config.name,
+                    proxy_config=sftp_config.proxy,
                 )
             case _:
                 raise Exit(

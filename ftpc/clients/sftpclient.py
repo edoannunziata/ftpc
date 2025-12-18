@@ -1,5 +1,5 @@
 from pathlib import Path, PurePath, PurePosixPath
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, TYPE_CHECKING
 import stat
 from datetime import datetime
 import os.path
@@ -9,6 +9,16 @@ from paramiko.ssh_exception import SSHException
 
 from ftpc.clients.client import Client
 from ftpc.filedescriptor import FileDescriptor, FileType
+
+if TYPE_CHECKING:
+    from ftpc.config import ProxyConfig
+
+try:
+    import socks
+
+    SOCKS_AVAILABLE = True
+except ImportError:
+    SOCKS_AVAILABLE = False
 
 
 class SftpClient(Client):
@@ -21,6 +31,7 @@ class SftpClient(Client):
         password=None,
         key_filename=None,
         name=None,
+        proxy_config: Optional["ProxyConfig"] = None,
     ):
         """
         Initialize the SFTP client.
@@ -32,6 +43,7 @@ class SftpClient(Client):
             password: The password for authentication
             key_filename: Path to the private key file for authentication
             name: Optional human-readable name for this client
+            proxy_config: Optional SOCKS5 proxy configuration
         """
         self.host = host
         self.port = port
@@ -39,10 +51,12 @@ class SftpClient(Client):
         self.password = password
         self.key_filename = key_filename
         self._name = name if name else f"SFTP:{host}"
+        self.proxy_config = proxy_config
 
         # These will be initialized in __enter__
         self.ssh_client = None
         self.sftp_client = None
+        self._proxy_socket = None
 
     def __enter__(self):
         try:
@@ -54,6 +68,24 @@ class SftpClient(Client):
                 "port": self.port,
                 "timeout": 10,
             }
+
+            # Create SOCKS5 proxy socket if configured
+            if self.proxy_config:
+                if not SOCKS_AVAILABLE:
+                    raise RuntimeError(
+                        "PySocks is required for SOCKS5 proxy support. "
+                        "Install with: pip install pysocks"
+                    )
+                self._proxy_socket = socks.socksocket()
+                self._proxy_socket.set_proxy(
+                    socks.SOCKS5,
+                    self.proxy_config.host,
+                    self.proxy_config.port,
+                    username=self.proxy_config.username,
+                    password=self.proxy_config.password,
+                )
+                self._proxy_socket.connect((self.host, self.port))
+                connect_kwargs["sock"] = self._proxy_socket
 
             if self.username:
                 connect_kwargs["username"] = self.username
@@ -73,6 +105,9 @@ class SftpClient(Client):
 
             return self
         except Exception as e:
+            if self._proxy_socket:
+                self._proxy_socket.close()
+                self._proxy_socket = None
             if self.ssh_client:
                 self.ssh_client.close()
                 self.ssh_client = None
@@ -86,6 +121,10 @@ class SftpClient(Client):
         if self.ssh_client:
             self.ssh_client.close()
             self.ssh_client = None
+
+        if self._proxy_socket:
+            self._proxy_socket.close()
+            self._proxy_socket = None
 
     def name(self) -> str:
         return self._name

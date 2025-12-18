@@ -1,5 +1,5 @@
 from pathlib import Path, PurePath, PurePosixPath
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, TYPE_CHECKING
 
 import boto3
 from botocore.exceptions import ClientError
@@ -9,6 +9,9 @@ from botocore.client import Config
 
 from ftpc.clients.client import Client
 from ftpc.filedescriptor import FileDescriptor, FileType
+
+if TYPE_CHECKING:
+    from ftpc.config import ProxyConfig
 
 
 class S3Client(Client):
@@ -21,6 +24,7 @@ class S3Client(Client):
         aws_secret_access_key=None,
         region_name=None,
         name=None,
+        proxy_config: Optional["ProxyConfig"] = None,
     ):
         """
         Initialize the S3-compatible storage client.
@@ -32,6 +36,7 @@ class S3Client(Client):
             aws_secret_access_key: Optional secret access key for authentication
             region_name: Optional AWS region name
             name: Optional human-readable name for this client
+            proxy_config: Optional SOCKS5 proxy configuration
         """
         self.bucket_name = bucket_name
         self.endpoint_url = endpoint_url
@@ -39,6 +44,7 @@ class S3Client(Client):
         self.aws_secret_access_key = aws_secret_access_key
         self.region_name = region_name
         self._name = name if name else f"S3:{bucket_name}"
+        self.proxy_config = proxy_config
 
         # These will be initialized in __enter__
         self.s3_client = None
@@ -52,21 +58,36 @@ class S3Client(Client):
             region_name=self.region_name,
         )
 
-        # Create S3 client and resource
+        # Build config with optional proxy and signature settings
+        config_kwargs = {}
+
+        if self.proxy_config:
+            proxy_url = self._build_proxy_url()
+            config_kwargs["proxies"] = {"http": proxy_url, "https": proxy_url}
+
         # If no credentials are provided, use unsigned requests (anonymous access)
         if not self.aws_access_key_id and not self.aws_secret_access_key:
-            config = Config(signature_version=UNSIGNED)
-            self.s3_client = session.client(
-                "s3", endpoint_url=self.endpoint_url, config=config
-            )
-            self.s3_resource = session.resource(
-                "s3", endpoint_url=self.endpoint_url, config=config
-            )
-        else:
-            self.s3_client = session.client("s3", endpoint_url=self.endpoint_url)
-            self.s3_resource = session.resource("s3", endpoint_url=self.endpoint_url)
+            config_kwargs["signature_version"] = UNSIGNED
+
+        config = Config(**config_kwargs) if config_kwargs else None
+
+        self.s3_client = session.client(
+            "s3", endpoint_url=self.endpoint_url, config=config
+        )
+        self.s3_resource = session.resource(
+            "s3", endpoint_url=self.endpoint_url, config=config
+        )
 
         return self
+
+    def _build_proxy_url(self) -> str:
+        """Build SOCKS5 proxy URL for boto3."""
+        if self.proxy_config.username and self.proxy_config.password:
+            return (
+                f"socks5://{self.proxy_config.username}:{self.proxy_config.password}"
+                f"@{self.proxy_config.host}:{self.proxy_config.port}"
+            )
+        return f"socks5://{self.proxy_config.host}:{self.proxy_config.port}"
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.s3_client = None
