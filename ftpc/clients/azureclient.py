@@ -3,7 +3,6 @@ from typing import List, Optional, Callable, TYPE_CHECKING
 
 from azure.storage.filedatalake import DataLakeServiceClient
 from azure.core.exceptions import ResourceNotFoundError, HttpResponseError
-from azure.core.pipeline.transport import RequestsTransport
 from azure.identity import DefaultAzureCredential
 
 from ftpc.clients.client import Client
@@ -55,29 +54,26 @@ class AzureClient(Client):
             self._credential = DefaultAzureCredential()
 
         # Create transport with proxy if configured
-        transport = None
         if self.proxy_config:
             proxy_url = self._build_proxy_url()
             proxies = {"http": proxy_url, "https": proxy_url}
-            transport = RequestsTransport(proxies=proxies)
 
         # Create service client based on provided auth method
         if self.connection_string:
             self.service_client = DataLakeServiceClient.from_connection_string(
-                conn_str=self.connection_string,
-                transport=transport,
+                conn_str=self.connection_string, proxies=proxies
             )
         elif self.account_key:
             self.service_client = DataLakeServiceClient(
                 account_url=self.account_url,
                 credential=self.account_key,
-                transport=transport,
+                proxies=proxies,
             )
         else:
             self.service_client = DataLakeServiceClient(
                 account_url=self.account_url,
                 credential=self._credential,
-                transport=transport,
+                proxies=proxies,
             )
 
         # Get filesystem (container) client
