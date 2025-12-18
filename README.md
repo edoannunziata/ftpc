@@ -7,10 +7,17 @@ to access the storage backends programmatically.
 A substantial part of the development was assisted by artificial intelligence tools,
 and the projects doubles as a training ground to see how far these tools can be pushed.
 
+This project is not "vibe coded". I am pushing
+myself to explore various AI tools more than I normally would, but the priority is to
+make something useful for myself (and hopefully others.) If the AI gets stuck, can't
+complete a task or makes a mess of it, I step in and fix the problem.
+Purity is _not_ a goal.
+
+
 ## Supported backends
 - Local filesystem
 - FTP/FTPS with TLS support
-- SFTP 
+- SFTP
 - S3 compatible
 - Azure Data Lake Storage Gen2
 
