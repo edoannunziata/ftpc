@@ -7,7 +7,12 @@ from ftpc.clients.client import Client
 from ftpc.clients.localclient import LocalClient
 from ftpc.filedescriptor import FileDescriptor
 from ftpc.tui.lswindow import LsWindow
-from ftpc.tui.dialog import show_help_dialog, show_confirmation_dialog, show_input_dialog, ProgressDialog
+from ftpc.tui.dialog import (
+    show_help_dialog,
+    show_confirmation_dialog,
+    show_input_dialog,
+    ProgressDialog,
+)
 
 
 class TuiMode(IntEnum):
@@ -348,12 +353,15 @@ class Tui:
         self.stdscr.refresh()
 
         # Setup colors
+        curses.start_color()
+        curses.use_default_colors()
+
         curses.init_pair(
             1, curses.COLOR_WHITE, curses.COLOR_BLUE
         )  # Normal mode bar color
-        curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)  # Icon color
-        curses.init_pair(3, curses.COLOR_CYAN, curses.COLOR_BLACK)  # Directory color
-        curses.init_pair(4, curses.COLOR_GREEN, curses.COLOR_BLACK)  # File color
+        curses.init_pair(2, curses.COLOR_RED, -1)  # Icon color
+        curses.init_pair(3, curses.COLOR_CYAN, -1)  # Directory color
+        curses.init_pair(4, curses.COLOR_GREEN, -1)  # File color
         curses.init_pair(
             5, curses.COLOR_WHITE, curses.COLOR_RED
         )  # Upload mode bar color
@@ -441,7 +449,9 @@ class Tui:
                                 self.lswindow.draw_window()
                                 self.refresh_directory_listing()
                     case "m":
-                        if self.mode == TuiMode.NORMAL:  # Only allow mkdir in normal mode
+                        if (
+                            self.mode == TuiMode.NORMAL
+                        ):  # Only allow mkdir in normal mode
                             self.make_directory()
                             # Redraw everything after the operation
                             self.stdscr.clear()
