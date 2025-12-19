@@ -54,6 +54,7 @@ class AzureClient(Client):
             self._credential = DefaultAzureCredential()
 
         # Create transport with proxy if configured
+        proxies = None
         if self.proxy_config:
             proxy_url = self._build_proxy_url()
             proxies = {"http": proxy_url, "https": proxy_url}

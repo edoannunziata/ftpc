@@ -8,6 +8,7 @@ from ftpc.clients.ftpclient import FtpClient
 from ftpc.clients.localclient import LocalClient
 from ftpc.tui import Tui, RemoteSelector
 from ftpc.config import Config, ConfigError, RemoteNotFoundError, ValidationError
+from ftpc.config.base import BaseRemoteConfig
 from ftpc.config.remotes import (
     FtpConfig,
     S3Config,
@@ -47,6 +48,124 @@ except ImportError:
 
 class Exit(Exception):
     pass
+
+
+def create_client(remote_config: BaseRemoteConfig, remote_name: str) -> Client:
+    """Create a client based on remote configuration type."""
+    match remote_config.type:
+        case "ftp":
+            ftp_config = remote_config  # type: FtpConfig
+            return FtpClient(
+                ftp_config.url,
+                tls=ftp_config.tls,
+                username=ftp_config.username,
+                password=ftp_config.password,
+                name=ftp_config.name,
+                proxy_config=ftp_config.proxy,
+            )
+        case "local":
+            return LocalClient()
+        case "azure":
+            if not AZURE_AVAILABLE:
+                raise Exit(
+                    "fatal error: Azure support requires additional dependencies.\n"
+                    "Install with: pip install azure-storage-file-datalake azure-identity"
+                )
+
+            azure_config = remote_config  # type: AzureConfig
+            return AzureClient(
+                azure_config.url,
+                filesystem_name=azure_config.filesystem,
+                connection_string=azure_config.connection_string,
+                account_key=azure_config.account_key,
+                name=azure_config.name,
+                proxy_config=azure_config.proxy,
+            )
+        case "s3":
+            if not S3_AVAILABLE:
+                raise Exit(
+                    "fatal error: S3 support requires additional dependencies.\n"
+                    "Install with: pip install boto3"
+                )
+
+            s3_config = remote_config  # type: S3Config
+            return S3Client(
+                bucket_name=s3_config.get_bucket_name(),
+                endpoint_url=s3_config.endpoint_url,
+                aws_access_key_id=s3_config.aws_access_key_id,
+                aws_secret_access_key=s3_config.aws_secret_access_key,
+                region_name=s3_config.region_name,
+                name=s3_config.name,
+                proxy_config=s3_config.proxy,
+            )
+        case "sftp":
+            if not SFTP_AVAILABLE:
+                raise Exit(
+                    "fatal error: SFTP support requires additional dependencies.\n"
+                    "Install with: pip install paramiko"
+                )
+
+            sftp_config = remote_config  # type: SftpConfig
+            return SftpClient(
+                sftp_config.url,
+                port=sftp_config.port,
+                username=sftp_config.username,
+                password=sftp_config.password,
+                key_filename=sftp_config.key_filename,
+                name=sftp_config.name,
+                proxy_config=sftp_config.proxy,
+            )
+        case "blob":
+            if not BLOB_AVAILABLE:
+                raise Exit(
+                    "fatal error: Azure Blob support requires additional dependencies.\n"
+                    "Install with: pip install azure-storage-blob azure-identity"
+                )
+
+            blob_config = remote_config  # type: BlobConfig
+            return AzureBlobClient(
+                blob_config.url,
+                container_name=blob_config.container,
+                connection_string=blob_config.connection_string,
+                account_key=blob_config.account_key,
+                name=blob_config.name,
+                proxy_config=blob_config.proxy,
+            )
+        case _:
+            raise Exit(
+                f"fatal error: unknown remote type '{remote_config.type}' for remote {remote_name}."
+            )
+
+
+def run_tui_loop(config: Config, initial_remote: str | None, initial_path: str) -> None:
+    """Main loop: show selector, connect to remote, repeat when user presses 'q'."""
+    remote_name = initial_remote
+    path = initial_path
+
+    while True:
+        # Show interactive selection menu if no remote specified
+        if remote_name is None:
+            selector = RemoteSelector(config.remotes)
+            result = selector.start()
+            if result is None:
+                # User quit the selector - exit
+                return
+            remote_name, path = result
+
+        # Get remote config and create client
+        try:
+            remote_config = config.get_remote(remote_name)
+        except RemoteNotFoundError as e:
+            raise Exit(str(e))
+
+        client = create_client(remote_config, remote_name)
+
+        tui = Tui(client, cwd=PurePath(path))
+        tui.start()
+
+        # Reset for next iteration - show selector
+        remote_name = None
+        path = "/"
 
 
 def config_file_type(path):
@@ -91,109 +210,7 @@ def main():
             for warning in warnings:
                 print(f"Warning: {warning}", file=sys.stderr)
 
-        # If no remote specified, show interactive selection menu
-        if args.remote is None:
-            selector = RemoteSelector(config.remotes)
-            result = selector.start()
-            if result is None:
-                # User quit the selector
-                return
-            args.remote, args.path = result
-
-        # Get the requested remote configuration
-        try:
-            remote_config = config.get_remote(args.remote)
-        except RemoteNotFoundError as e:
-            raise Exit(str(e))
-
-        # Create client based on configuration type
-        client: Client | None
-        match remote_config.type:
-            case "ftp":
-                ftp_config = remote_config  # type: FtpConfig
-                client = FtpClient(
-                    ftp_config.url,
-                    tls=ftp_config.tls,
-                    username=ftp_config.username,
-                    password=ftp_config.password,
-                    name=ftp_config.name,
-                    proxy_config=ftp_config.proxy,
-                )
-            case "local":
-                client = LocalClient()
-            case "azure":
-                if not AZURE_AVAILABLE:
-                    raise Exit(
-                        "fatal error: Azure support requires additional dependencies.\n"
-                        "Install with: pip install azure-storage-file-datalake azure-identity"
-                    )
-
-                azure_config = remote_config  # type: AzureConfig
-                client = AzureClient(
-                    azure_config.url,
-                    filesystem_name=azure_config.filesystem,
-                    connection_string=azure_config.connection_string,
-                    account_key=azure_config.account_key,
-                    name=azure_config.name,
-                    proxy_config=azure_config.proxy,
-                )
-            case "s3":
-                if not S3_AVAILABLE:
-                    raise Exit(
-                        "fatal error: S3 support requires additional dependencies.\n"
-                        "Install with: pip install boto3"
-                    )
-
-                s3_config = remote_config  # type: S3Config
-                client = S3Client(
-                    bucket_name=s3_config.get_bucket_name(),
-                    endpoint_url=s3_config.endpoint_url,
-                    aws_access_key_id=s3_config.aws_access_key_id,
-                    aws_secret_access_key=s3_config.aws_secret_access_key,
-                    region_name=s3_config.region_name,
-                    name=s3_config.name,
-                    proxy_config=s3_config.proxy,
-                )
-            case "sftp":
-                if not SFTP_AVAILABLE:
-                    raise Exit(
-                        "fatal error: SFTP support requires additional dependencies.\n"
-                        "Install with: pip install paramiko"
-                    )
-
-                sftp_config = remote_config  # type: SftpConfig
-                client = SftpClient(
-                    sftp_config.url,
-                    port=sftp_config.port,
-                    username=sftp_config.username,
-                    password=sftp_config.password,
-                    key_filename=sftp_config.key_filename,
-                    name=sftp_config.name,
-                    proxy_config=sftp_config.proxy,
-                )
-            case "blob":
-                if not BLOB_AVAILABLE:
-                    raise Exit(
-                        "fatal error: Azure Blob support requires additional dependencies.\n"
-                        "Install with: pip install azure-storage-blob azure-identity"
-                    )
-
-                blob_config = remote_config  # type: BlobConfig
-                client = AzureBlobClient(
-                    blob_config.url,
-                    container_name=blob_config.container,
-                    connection_string=blob_config.connection_string,
-                    account_key=blob_config.account_key,
-                    name=blob_config.name,
-                    proxy_config=blob_config.proxy,
-                )
-            case _:
-                raise Exit(
-                    f"fatal error: unknown remote type '{remote_config.type}' for remote {args.remote}."
-                )
-
-        tui = Tui(client, cwd=PurePath(args.path))
-        tui.start()
+        run_tui_loop(config, args.remote, args.path)
 
     except Exit as e:
         print(e)

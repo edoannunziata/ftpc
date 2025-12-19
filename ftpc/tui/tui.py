@@ -365,6 +365,7 @@ class Tui:
         curses.init_pair(
             5, curses.COLOR_WHITE, curses.COLOR_RED
         )  # Upload mode bar color
+        curses.init_pair(6, -1, -1)  # Neutral color (default fg/bg)
 
         # Store color pairs for easy mode switching
         self.normal_bar_color = curses.color_pair(1) | curses.A_BOLD
@@ -376,6 +377,7 @@ class Tui:
             icon_color=curses.color_pair(2) | curses.A_BOLD,
             dir_color=curses.color_pair(3),
             file_color=curses.color_pair(4),
+            neutral_color=curses.color_pair(6),
         )
 
         # Initialize content
@@ -402,7 +404,9 @@ class Tui:
                     case "g":
                         self.lswindow.select_first()
                     case "l" | "KEY_RIGHT" | "\n":  # Enter key handling
-                        if selected := self.lswindow.get_selected():
+                        if (selected := self.lswindow.get_selected()) and isinstance(
+                            selected, FileDescriptor
+                        ):
                             if selected.is_directory:
                                 # Navigate to directory
                                 self.navigate_to_directory(selected.path)
@@ -441,7 +445,9 @@ class Tui:
                         if (
                             self.mode == TuiMode.NORMAL
                         ):  # Only allow deletion in normal mode
-                            if selected := self.lswindow.get_selected():
+                            if (
+                                selected := self.lswindow.get_selected()
+                            ) and isinstance(selected, FileDescriptor):
                                 self.delete_file(selected)
                                 # Redraw everything after the operation
                                 self.stdscr.clear()

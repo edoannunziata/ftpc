@@ -4,6 +4,10 @@ ftpc is a simple TUI file transfer client that supports multiple storage backend
 It is designed to be simple and hackable, and doubles as a quick-and-dirty library
 to access the storage backends programmatically.
 
+The project was born out of frusration for Microsoft's tools to access Azure storage,
+most of my needs are relatively simple and I have no need for software that's complex
+and slow.
+
 A substantial part of the development was assisted by artificial intelligence tools,
 and the projects doubles as a training ground to see how far these tools can be pushed.
 

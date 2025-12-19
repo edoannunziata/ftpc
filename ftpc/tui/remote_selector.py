@@ -1,42 +1,10 @@
 import curses
-from dataclasses import dataclass
-from pathlib import PurePath
 from typing import Dict, Optional
 
 from ftpc.config.base import BaseRemoteConfig
+from ftpc.displaydescriptor import RemoteDisplayDescriptor
 from ftpc.tui.lswindow import LsWindow
 from ftpc.tui.dialog import show_dialog, show_input_dialog
-
-
-@dataclass
-class RemoteDescriptor:
-    """Represents a remote for display in the selection list.
-
-    Provides compatibility with LsWindow's expected interface.
-    """
-    remote_name: str
-    remote_type: str
-    config: BaseRemoteConfig
-
-    @property
-    def name(self) -> str:
-        return self.remote_name
-
-    @property
-    def path(self) -> PurePath:
-        return PurePath(self.remote_name)
-
-    @property
-    def is_directory(self) -> bool:
-        return False
-
-    @property
-    def size(self) -> Optional[int]:
-        return None
-
-    @property
-    def modified_time(self):
-        return None
 
 
 class RemoteSelector:
@@ -45,7 +13,7 @@ class RemoteSelector:
     def __init__(self, remotes: Dict[str, BaseRemoteConfig]):
         self.remotes = remotes
         self.remote_descriptors = [
-            RemoteDescriptor(
+            RemoteDisplayDescriptor(
                 remote_name=name,
                 remote_type=config.type,
                 config=config
@@ -81,6 +49,7 @@ class RemoteSelector:
         curses.init_pair(3, curses.COLOR_CYAN, -1)  # Directory color
         curses.init_pair(4, curses.COLOR_GREEN, -1)  # File color
         curses.init_pair(6, curses.COLOR_WHITE, curses.COLOR_GREEN)  # Selector bar
+        curses.init_pair(7, -1, -1)  # Neutral color (default fg/bg)
 
         self.selector_bar_color = curses.color_pair(6) | curses.A_BOLD
 
@@ -90,6 +59,7 @@ class RemoteSelector:
             icon_color=curses.color_pair(2) | curses.A_BOLD,
             dir_color=curses.color_pair(3),
             file_color=curses.color_pair(4),
+            neutral_color=curses.color_pair(7),
             top_text="Select Remote",
             bottom_text="Press ? for help, i for details, o to set path"
         )
@@ -124,7 +94,7 @@ class RemoteSelector:
         show_dialog(self.stdscr, title="Remote Selector Help", content=msg)
         self._redraw()
 
-    def _show_details(self, remote_desc: RemoteDescriptor):
+    def _show_details(self, remote_desc: RemoteDisplayDescriptor):
         """Show details dialog for a remote."""
         config = remote_desc.config
         lines = [
@@ -226,10 +196,14 @@ class RemoteSelector:
                 case "g":
                     self.lswindow.select_first()
                 case "l" | "\n":
-                    if selected := self.lswindow.get_selected():
+                    if (selected := self.lswindow.get_selected()) and isinstance(
+                        selected, RemoteDisplayDescriptor
+                    ):
                         return (selected.remote_name, self.selected_path)
                 case "i":
-                    if selected := self.lswindow.get_selected():
+                    if (selected := self.lswindow.get_selected()) and isinstance(
+                        selected, RemoteDisplayDescriptor
+                    ):
                         self._show_details(selected)
                 case "o":
                     self._set_path()
