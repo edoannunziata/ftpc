@@ -4,12 +4,12 @@ ftpc is a simple TUI file transfer client that supports multiple storage backend
 It is designed to be simple and hackable, and doubles as a quick-and-dirty library
 to access the storage backends programmatically.
 
-The project was born out of frusration for Microsoft's tools to access Azure storage,
+The project was born out of frustration with Microsoft's tools to access Azure storage;
 most of my needs are relatively simple and I have no need for software that's complex
 and slow.
 
 A substantial part of the development was assisted by artificial intelligence tools,
-and the projects doubles as a training ground to see how far these tools can be pushed.
+and the project doubles as a training ground to see how far these tools can be pushed.
 
 This project is not "vibe coded". I am pushing
 myself to explore various AI tools more than I normally would, but the priority is to
@@ -27,29 +27,37 @@ Purity is _not_ a goal.
 
 ## Installation
 
-### Basic Installation
+### From Source (Development)
+Clone the repository and install in editable mode:
 ```bash
+git clone https://github.com/edoannunziata/ftpc.git
+cd ftpc
 pip install -e .
 ```
 
 ### Full Installation (all backends)
+To install with all optional backend dependencies:
 ```bash
 pip install -e ".[all]"
 ```
 
+The basic installation includes support for **Local filesystem** and **FTP/FTPS** backends. The full installation adds support for SFTP, S3, and Azure.
+
 ### Installing Specific Backends
 
-For Azure support:
+You can also install only the backends you need:
+
+For Azure Data Lake Storage Gen2:
 ```bash
 pip install azure-storage-file-datalake azure-identity
 ```
 
-For AWS S3 support:
+For AWS S3 (and S3-compatible services):
 ```bash
 pip install boto3
 ```
 
-For SFTP support:
+For SFTP:
 ```bash
 pip install paramiko
 ```
@@ -89,24 +97,31 @@ type = "sftp"
 url = "sftp.example.com"            # Required: SFTP server hostname
 port = 22                           # Optional: SSH port (default: 22)
 username = "user"                   # Optional: Username for authentication
-password = "password"               # Optional: Password (either password or key_filename required)
+password = "password"               # Optional: Password for authentication
 key_filename = "/path/to/private_key"  # Optional: Path to private key file
 ```
+
+**Authentication:** You must provide either `password` or `key_filename` (or both). If using key-based authentication, ensure the private key file has appropriate permissions (typically `chmod 600`).
 
 #### AWS S3 Client
 
 ```toml
 [s3]
 type = "s3"
-url = "s3://my-bucket"              # Optional: S3 URL (alternative to bucket_name)
-bucket_name = "my-bucket"           # Optional: S3 bucket name (alternative to url)
+url = "s3://my-bucket"              # S3 URL format (use this OR bucket_name)
+bucket_name = "my-bucket"           # Bucket name (use this OR url)
 region_name = "us-west-2"           # Optional: AWS region
-endpoint_url = "https://s3.amazonaws.com"  # Optional: Custom S3 endpoint (for S3-compatible services)
-aws_access_key_id = "ACCESS_KEY"    # Optional: AWS access key (uses environment/credentials if not specified)
-aws_secret_access_key = "SECRET_KEY"  # Optional: AWS secret key (uses environment/credentials if not specified)
+endpoint_url = "https://s3.amazonaws.com"  # Optional: Custom endpoint (for S3-compatible services like MinIO)
+aws_access_key_id = "ACCESS_KEY"    # Optional: AWS access key
+aws_secret_access_key = "SECRET_KEY"  # Optional: AWS secret key
 ```
 
-**Note:** AWS credentials are typically loaded from environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) or `~/.aws/credentials` file. Only specify credentials in the config if needed.
+**Bucket specification:** Use either `url` (e.g., `s3://my-bucket`) or `bucket_name`, but not both. If both are provided, `url` takes precedence.
+
+**Credentials:** AWS credentials are loaded in the following order of precedence:
+1. Explicit `aws_access_key_id`/`aws_secret_access_key` in the config
+2. Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
+3. AWS credentials file (`~/.aws/credentials`)
 
 #### Azure Data Lake Storage Gen2 Client
 
@@ -178,9 +193,9 @@ python -m ftpc --config ./my-config.toml azure /documents
 
 | Key           | Action                              |
 |---------------|-------------------------------------|
-| Arrow keys    | Navigate file list                  |
+| Up/Down       | Navigate file list                  |
 | Enter         | Enter directory or download file    |
-| Left Arrow    | Go back in history                  |
+| Left Arrow    | Go back in navigation history       |
 | p             | Go to parent directory              |
 | r             | Refresh current directory           |
 | u             | Toggle upload mode                  |
@@ -188,3 +203,13 @@ python -m ftpc --config ./my-config.toml azure /documents
 | /             | Search for files                    |
 | ?             | Show help dialog                    |
 | q             | Quit application                    |
+
+**Navigation history:** The Left Arrow key navigates through previously visited directories (like a browser's back button), while `p` always moves to the immediate parent directory.
+
+**Upload mode:** When upload mode is enabled (press `u`), pressing Enter on a file will upload it to the remote instead of downloading. Press `u` again to return to normal (download) mode.
+
+## File Transfers
+
+**Downloads:** Files are downloaded to the directory where ftpc was launched (your shell's current working directory). A confirmation dialog is shown before each download.
+
+**Uploads:** When upload mode is enabled, files from the remote are replaced with local files of the same name from your current working directory.
