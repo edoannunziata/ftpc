@@ -3,17 +3,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, Any, Type, Optional, IO, List
 
+from ftpc.exceptions import ConfigError, RemoteNotFoundError, ValidationError
 
-class ConfigError(Exception):
-    """Base exception for configuration errors."""
-
-
-class RemoteNotFoundError(ConfigError):
-    """Exception raised when a remote configuration is not found."""
-
-
-class ValidationError(ConfigError):
-    """Exception raised when configuration validation fails."""
+# Re-export for backward compatibility
+__all__ = ["ConfigError", "RemoteNotFoundError", "ValidationError", "BaseRemoteConfig", "Config"]
 
 
 @dataclass

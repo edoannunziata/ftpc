@@ -322,7 +322,8 @@ class ProgressDialog:
             if key.lower() == "q":
                 self.canceled = True
                 return False
-        except Exception:
+        except curses.error:
+            # No input available (expected in nodelay mode)
             pass
         finally:
             self.stdscr.nodelay(False)
