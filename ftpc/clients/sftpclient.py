@@ -161,7 +161,7 @@ class SftpClient(Client):
                 try:
                     remote_stat = self.sftp_client.stat(remote_path)
                     total_size = remote_stat.st_size
-                except:
+                except (SSHException, IOError):
                     total_size = 0  # Unknown size
 
                 class ProgressTracker:

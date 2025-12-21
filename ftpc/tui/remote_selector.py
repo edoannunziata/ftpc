@@ -220,5 +220,6 @@ class RemoteSelector:
             try:
                 curses.update_lines_cols()
                 self._tui_init()
-            except Exception:
+            except curses.error:
+                # Terminal resize failed - continue with current dimensions
                 pass

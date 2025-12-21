@@ -1,4 +1,4 @@
-from ftplib import FTP, FTP_TLS
+from ftplib import FTP, FTP_TLS, error_perm, error_temp, error_reply
 from pathlib import Path, PurePosixPath, PurePath
 from datetime import datetime
 from typing import List, Optional, TYPE_CHECKING
@@ -190,7 +190,8 @@ class FtpClient(Client):
         if self.ftp_client:
             try:
                 self.ftp_client.quit()
-            except Exception:
+            except (error_perm, error_temp, error_reply, OSError, EOFError):
+                # If quit fails (e.g., connection already closed), force close
                 self.ftp_client.close()
 
     def name(self) -> str:
@@ -227,7 +228,9 @@ class FtpClient(Client):
                     )
                     result.append(fd)
 
-        except Exception:
+        except (error_perm, error_temp, error_reply, OSError, EOFError):
+            # FTP errors: permission denied, temporary failure, protocol error
+            # OSError: network issues, EOFError: connection closed
             pass
 
         return result
@@ -246,12 +249,14 @@ class FtpClient(Client):
         try:
             self.ftp_client.cwd(path_str)
             return True
-        except Exception:
+        except (error_perm, error_temp, OSError, EOFError):
+            # Cannot cwd into path - it's not a directory (or doesn't exist)
             return False
         finally:
             try:
                 self.ftp_client.cwd(original_dir)
-            except Exception:
+            except (error_perm, error_temp, OSError, EOFError):
+                # Best effort to restore directory - if it fails, we can't do much
                 pass
 
     def _parse_list_line(self, line: str) -> FileDescriptor | None:
@@ -362,12 +367,14 @@ class FtpClient(Client):
         try:
             self.ftp_client.delete(remote.as_posix())
             return True
-        except Exception:
+        except (error_perm, error_temp, error_reply, OSError, EOFError):
+            # Permission denied, file not found, or connection issues
             return False
 
     def mkdir(self, remote: PurePath) -> bool:
         try:
             self.ftp_client.mkd(remote.as_posix())
             return True
-        except Exception:
+        except (error_perm, error_temp, error_reply, OSError, EOFError):
+            # Permission denied, directory exists, or connection issues
             return False
