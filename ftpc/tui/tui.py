@@ -1,10 +1,11 @@
 import curses
 from enum import IntEnum, auto
 from pathlib import PurePath, Path
-from typing import Optional
+from typing import Any, Optional
 
 from ftpc.clients.client import Client
 from ftpc.clients.localclient import LocalClient
+from ftpc.displaydescriptor import DisplayDescriptor
 from ftpc.filedescriptor import FileDescriptor
 from ftpc.tui.lswindow import LsWindow
 from ftpc.tui.dialog import (
@@ -12,6 +13,12 @@ from ftpc.tui.dialog import (
     show_confirmation_dialog,
     show_input_dialog,
     ProgressDialog,
+)
+from ftpc.exceptions import (
+    ConnectionError,
+    AuthenticationError,
+    ListingError,
+    ClientError,
 )
 
 
@@ -21,19 +28,25 @@ class TuiMode(IntEnum):
 
 
 class Tui:
-    def __init__(self, client: Client, *, cwd: PurePath):
-        self.client = client
+    def __init__(self, client: Client, *, cwd: PurePath) -> None:
+        self.client: Client = client
         self.cwd = cwd
-        self.lswindow = None
-        self.stdscr = None
+        self.lswindow: Optional[LsWindow] = None
+        self.stdscr: Any = None
         self.mode = TuiMode.NORMAL
         self.history: list[PurePath] = []  # Navigation history
         self.status_message: Optional[str] = None  # Status message for downloads
+        # These are set in upload mode
+        self.remote_client: Optional[Client] = None
+        self.remote_cwd: Optional[PurePath] = None
+        self.upload_client: Optional[LocalClient] = None
+        self.normal_bar_color: int = 0
+        self.upload_bar_color: int = 0
 
-    def start(self):
+    def start(self) -> None:
         curses.wrapper(self._main_loop)
 
-    def _handle_resize(self, _signum, _frame):
+    def _handle_resize(self, _signum: Any, _frame: Any) -> None:
         """Handle terminal resize event with complete terminal reset"""
         if self.stdscr and self.lswindow:
             try:
@@ -43,8 +56,13 @@ class Tui:
                 self._tui_init()
 
                 # Reset the window with the current elements
-                file_descriptors = self.client.ls(self.cwd)
-                self.lswindow.elements = file_descriptors
+                try:
+                    file_descriptors = self.client.ls(self.cwd)
+                    self.lswindow.elements = file_descriptors  # type: ignore[assignment]
+                except ListingError as e:
+                    self.lswindow.elements = []
+                    self.status_message = str(e)
+
                 self.lswindow.top_text = self.client.name()
 
                 # Set bottom text
@@ -67,10 +85,15 @@ class Tui:
                 except Exception:
                     pass
 
-    def refresh_directory_listing(self):
+    def refresh_directory_listing(self) -> None:
         """Refresh the directory listing with current client and path"""
-        file_descriptors = self.client.ls(self.cwd)
-        self.lswindow.elements = sorted(file_descriptors, key=lambda u: u.path)
+        assert self.lswindow is not None, "LsWindow not initialized"
+        try:
+            file_descriptors = self.client.ls(self.cwd)
+            self.lswindow.elements = sorted(file_descriptors, key=lambda u: u.path)  # type: ignore[attr-defined]
+        except ListingError as e:
+            self.lswindow.elements = []
+            self.status_message = str(e)
 
         if self.mode == TuiMode.NORMAL:
             self.lswindow.top_text = self.client.name()
@@ -83,7 +106,7 @@ class Tui:
         else:
             self.lswindow.bottom_text = self.cwd.as_posix()
 
-    def navigate_to_directory(self, dir_path: PurePath):
+    def navigate_to_directory(self, dir_path: PurePath) -> None:
         """Navigate to a directory, updating history"""
         # Save current location in history for "back" functionality
         self.history.append(self.cwd)
@@ -97,13 +120,13 @@ class Tui:
         # Refresh the display
         self.refresh_directory_listing()
 
-    def navigate_back(self):
+    def navigate_back(self) -> None:
         """Navigate to the previous directory in history"""
         if self.history:
             self.cwd = self.history.pop()
             self.refresh_directory_listing()
 
-    def navigate_to_parent(self):
+    def navigate_to_parent(self) -> None:
         """Navigate to the parent directory"""
         # Get the parent path
         parent = self.cwd.parent
@@ -119,11 +142,11 @@ class Tui:
             # Refresh the display
             self.refresh_directory_listing()
 
-    def download_file(self, file_desc: FileDescriptor):
+    def download_file(self, file_desc: FileDescriptor) -> bool:
         """Download a file to the local current working directory"""
         # Show confirmation dialog
         if not show_confirmation_dialog(
-            self.stdscr, "Download {file_desc.name} to local directory?"
+            self.stdscr, f"Download {file_desc.name} to local directory?"
         ):
             self.status_message = "Download cancelled"
             return False
@@ -167,8 +190,9 @@ class Tui:
             self.status_message = f"Error downloading {file_desc.name}: {str(e)}"
             return False
 
-    def search_file(self):
+    def search_file(self) -> None:
         """Search for a file/directory by name prefix"""
+        assert self.lswindow is not None, "LsWindow not initialized"
         # Save current bottom text to restore it later
         original_bottom_text = self.lswindow.bottom_text
 
@@ -227,7 +251,7 @@ class Tui:
         # Restore bottom text
         self.lswindow.bottom_text = original_bottom_text
 
-    def delete_file(self, file_desc) -> bool:
+    def delete_file(self, file_desc: FileDescriptor) -> bool:
         if file_desc.is_directory:
             self.status_message = "Cannot delete directories"
             return False
@@ -279,7 +303,9 @@ class Tui:
             self.status_message = f"Error creating directory: {str(e)}"
             return False
 
-    def enter_upload_mode(self):
+    def enter_upload_mode(self) -> None:
+        assert self.lswindow is not None, "LsWindow not initialized"
+        assert self.upload_client is not None, "Upload client not initialized"
         self.remote_client = self.client
         self.remote_cwd = self.cwd
 
@@ -296,7 +322,10 @@ class Tui:
 
         self.refresh_directory_listing()
 
-    def exit_upload_mode(self):
+    def exit_upload_mode(self) -> None:
+        assert self.lswindow is not None, "LsWindow not initialized"
+        assert self.remote_client is not None, "Remote client not set"
+        assert self.remote_cwd is not None, "Remote cwd not set"
         self.mode = TuiMode.NORMAL
         self.client = self.remote_client
         self.cwd = self.remote_cwd
@@ -309,7 +338,9 @@ class Tui:
 
         self.refresh_directory_listing()
 
-    def handle_upload_file_selection(self, file_desc: FileDescriptor):
+    def handle_upload_file_selection(self, file_desc: FileDescriptor) -> bool:
+        assert self.remote_client is not None, "Remote client not set"
+        assert self.remote_cwd is not None, "Remote cwd not set"
         local_path = Path(self.cwd) / file_desc.path
 
         if not show_confirmation_dialog(
@@ -345,7 +376,52 @@ class Tui:
             self.status_message = f"Error uploading {file_desc.name}: {str(e)}"
             return False
 
-    def _tui_init(self):
+    def _show_connection_error(self, stdscr: Any, error_message: str) -> None:
+        """Display a connection error screen and wait for user to quit"""
+        curses.curs_set(0)
+        stdscr.clear()
+
+        # Setup colors
+        curses.start_color()
+        curses.use_default_colors()
+        curses.init_pair(5, curses.COLOR_WHITE, curses.COLOR_RED)
+
+        height, width = stdscr.getmaxyx()
+
+        # Display error message - truncate if too long
+        max_msg_width = width - 4
+        truncated_msg = error_message[:max_msg_width] if len(error_message) > max_msg_width else error_message
+
+        error_lines = [
+            "Connection Error",
+            "",
+            truncated_msg,
+            "",
+            "Press 'q' to quit",
+        ]
+
+        for i, line in enumerate(error_lines):
+            y = height // 2 - len(error_lines) // 2 + i
+            x = max(0, (width - len(line)) // 2)
+            try:
+                if i == 0:  # Title line in red
+                    stdscr.addstr(y, x, line[:width - 1], curses.color_pair(5) | curses.A_BOLD)
+                else:
+                    stdscr.addstr(y, x, line[:width - 1])
+            except curses.error:
+                pass
+
+        stdscr.refresh()
+
+        while True:
+            try:
+                key = stdscr.getkey()
+                if key == "q":
+                    break
+            except curses.error:
+                pass
+
+    def _tui_init(self) -> None:
         curses.curs_set(0)  # Hide cursor
 
         # Clear screen
@@ -383,87 +459,91 @@ class Tui:
         # Initialize content
         self.refresh_directory_listing()
 
-    def _main_loop(self, stdscr):
-        with self.client:
-            self.stdscr = stdscr
+    def _main_loop(self, stdscr: Any) -> None:
+        self.stdscr = stdscr
 
-            self._tui_init()
+        try:
+            with self.client:
+                self._tui_init()
+                assert self.lswindow is not None, "LsWindow not initialized"
 
-            # Main input loop
-            while True:
-                self.status_message = None
-                match stdscr.getkey():
-                    case "q":
-                        break
-                    case "k" | "KEY_UP":
-                        self.lswindow.select_previous()
-                    case "j" | "KEY_DOWN":
-                        self.lswindow.select_next()
-                    case "G":
-                        self.lswindow.select_last()
-                    case "g":
-                        self.lswindow.select_first()
-                    case "l" | "KEY_RIGHT" | "\n":  # Enter key handling
-                        if (selected := self.lswindow.get_selected()) and isinstance(
-                            selected, FileDescriptor
-                        ):
-                            if selected.is_directory:
-                                # Navigate to directory
-                                self.navigate_to_directory(selected.path)
-                            elif self.mode == TuiMode.NORMAL:
-                                # Download file if it's a regular file
-                                self.download_file(selected)
+                # Main input loop
+                while True:
+                    self.status_message = None
+                    match stdscr.getkey():
+                        case "q":
+                            break
+                        case "k" | "KEY_UP":
+                            self.lswindow.select_previous()
+                        case "j" | "KEY_DOWN":
+                            self.lswindow.select_next()
+                        case "G":
+                            self.lswindow.select_last()
+                        case "g":
+                            self.lswindow.select_first()
+                        case "l" | "KEY_RIGHT" | "\n":  # Enter key handling
+                            if (selected := self.lswindow.get_selected()) and isinstance(
+                                selected, FileDescriptor
+                            ):
+                                if selected.is_directory:
+                                    # Navigate to directory
+                                    self.navigate_to_directory(selected.path)
+                                elif self.mode == TuiMode.NORMAL:
+                                    # Download file if it's a regular file
+                                    self.download_file(selected)
+                                elif self.mode == TuiMode.UPLOAD:
+                                    self.handle_upload_file_selection(selected)
+                            # Redraw everything after the dialog is closed
+                            self.stdscr.clear()
+                            self.stdscr.refresh()
+                            self.lswindow.draw_window()
+                            self.refresh_directory_listing()
+                        case "h" | "KEY_LEFT":  # Go back
+                            self.navigate_back()
+                        case "r":  # Refresh current directory
+                            self.refresh_directory_listing()
+                        case "?":  # Show help dialog
+                            show_help_dialog(self.stdscr)
+                            # Redraw everything after the dialog is closed
+                            self.stdscr.clear()
+                            self.stdscr.refresh()
+                            self.lswindow.draw_window()
+                            self.refresh_directory_listing()
+                        case "/":
+                            self.search_file()
+                        case "u":
+                            self.upload_client = LocalClient()
+                            if self.mode == TuiMode.NORMAL:
+                                self.enter_upload_mode()
                             elif self.mode == TuiMode.UPLOAD:
-                                self.handle_upload_file_selection(selected)
-                        # Redraw everything after the dialog is closed
-                        self.stdscr.clear()
-                        self.stdscr.refresh()
-                        self.lswindow.draw_window()
-                        self.refresh_directory_listing()
-                    case "h" | "KEY_LEFT":  # Go back
-                        self.navigate_back()
-                    case "r":  # Refresh current directory
-                        self.refresh_directory_listing()
-                    case "?":  # Show help dialog
-                        show_help_dialog(self.stdscr)
-                        # Redraw everything after the dialog is closed
-                        self.stdscr.clear()
-                        self.stdscr.refresh()
-                        self.lswindow.draw_window()
-                        self.refresh_directory_listing()
-                    case "/":
-                        self.search_file()
-                    case "u":
-                        self.upload_client = LocalClient()
-                        if self.mode == TuiMode.NORMAL:
-                            self.enter_upload_mode()
-                        elif self.mode == TuiMode.UPLOAD:
-                            self.exit_upload_mode()
-                    case "p":
-                        self.navigate_to_parent()
-                    case "d":
-                        if (
-                            self.mode == TuiMode.NORMAL
-                        ):  # Only allow deletion in normal mode
+                                self.exit_upload_mode()
+                        case "p":
+                            self.navigate_to_parent()
+                        case "d":
                             if (
-                                selected := self.lswindow.get_selected()
-                            ) and isinstance(selected, FileDescriptor):
-                                self.delete_file(selected)
+                                self.mode == TuiMode.NORMAL
+                            ):  # Only allow deletion in normal mode
+                                if (
+                                    selected := self.lswindow.get_selected()
+                                ) and isinstance(selected, FileDescriptor):
+                                    self.delete_file(selected)
+                                    # Redraw everything after the operation
+                                    self.stdscr.clear()
+                                    self.stdscr.refresh()
+                                    self.lswindow.draw_window()
+                                    self.refresh_directory_listing()
+                        case "m":
+                            if (
+                                self.mode == TuiMode.NORMAL
+                            ):  # Only allow mkdir in normal mode
+                                self.make_directory()
                                 # Redraw everything after the operation
                                 self.stdscr.clear()
                                 self.stdscr.refresh()
                                 self.lswindow.draw_window()
                                 self.refresh_directory_listing()
-                    case "m":
-                        if (
-                            self.mode == TuiMode.NORMAL
-                        ):  # Only allow mkdir in normal mode
-                            self.make_directory()
-                            # Redraw everything after the operation
-                            self.stdscr.clear()
-                            self.stdscr.refresh()
-                            self.lswindow.draw_window()
-                            self.refresh_directory_listing()
-                    case "KEY_RESIZE":
-                        # Additional resize handling if curses catches it directly
-                        self._handle_resize(None, None)
+                        case "KEY_RESIZE":
+                            # Additional resize handling if curses catches it directly
+                            self._handle_resize(None, None)
+        except (ConnectionError, AuthenticationError, ClientError) as e:
+            self._show_connection_error(stdscr, str(e))

@@ -2,11 +2,12 @@ from abc import abstractmethod, ABCMeta
 from contextlib import AbstractContextManager
 from pathlib import Path, PurePath
 from typing import List, Optional, Callable
+from typing_extensions import Self
 
 from ftpc.filedescriptor import FileDescriptor
 
 
-class Client(AbstractContextManager, metaclass=ABCMeta):
+class Client(AbstractContextManager["Client"], metaclass=ABCMeta):
     @abstractmethod
     def name(self) -> str:
         """
@@ -29,7 +30,7 @@ class Client(AbstractContextManager, metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def get(self, remote: PurePath, local: Path, progress_callback: Optional[Callable[[int], bool]] = None):
+    def get(self, remote: PurePath, local: Path, progress_callback: Optional[Callable[[int], bool]] = None) -> None:
         """
         Download a file from the remote path to the local path.
 
@@ -40,7 +41,7 @@ class Client(AbstractContextManager, metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def put(self, local: Path, remote: PurePath, progress_callback: Optional[Callable[[int], bool]] = None):
+    def put(self, local: Path, remote: PurePath, progress_callback: Optional[Callable[[int], bool]] = None) -> None:
         """
         Upload a file from the local path to the remote path.
 

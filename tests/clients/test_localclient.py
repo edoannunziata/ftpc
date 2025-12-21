@@ -9,6 +9,7 @@ from datetime import datetime
 
 from ftpc.clients.localclient import LocalClient
 from ftpc.filedescriptor import FileDescriptor, FileType
+from ftpc.exceptions import ListingError
 from tests.fixtures.test_data import TestDataFixtures
 
 
@@ -76,15 +77,15 @@ class TestLocalClient(unittest.TestCase):
         self.assertEqual(subdir.filetype, FileType.DIRECTORY)
     
     def test_ls_nonexistent_directory(self):
-        """Test listing contents of non-existent directory."""
-        result = self.client.ls(PurePath("/nonexistent/directory"))
-        self.assertEqual(result, [])
-    
+        """Test listing contents of non-existent directory raises ListingError."""
+        with self.assertRaises(ListingError):
+            self.client.ls(PurePath("/nonexistent/directory"))
+
     def test_ls_permission_denied(self):
-        """Test listing directory with permission denied."""
-        # This test might not work on all systems, but should not crash
-        result = self.client.ls(PurePath("/root"))
-        self.assertIsInstance(result, list)  # Should return empty list, not crash
+        """Test listing directory with permission denied raises ListingError."""
+        # This test might not work on all systems, but should raise ListingError
+        with self.assertRaises(ListingError):
+            self.client.ls(PurePath("/root"))
     
     def test_get_file_operation(self):
         """Test downloading/copying a file."""

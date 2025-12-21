@@ -1,5 +1,7 @@
 from pathlib import Path, PurePath, PurePosixPath
-from typing import List, Optional, Callable, TYPE_CHECKING
+from types import TracebackType
+from typing import Any, List, Optional, Callable, TYPE_CHECKING
+from typing_extensions import Self
 
 import boto3
 from botocore.exceptions import ClientError
@@ -9,6 +11,7 @@ from botocore.client import Config
 
 from ftpc.clients.client import Client
 from ftpc.filedescriptor import FileDescriptor, FileType
+from ftpc.exceptions import ListingError
 
 if TYPE_CHECKING:
     from ftpc.config import ProxyConfig
@@ -17,15 +20,15 @@ if TYPE_CHECKING:
 class S3Client(Client):
     def __init__(
         self,
-        bucket_name,
+        bucket_name: str,
         *,
-        endpoint_url=None,
-        aws_access_key_id=None,
-        aws_secret_access_key=None,
-        region_name=None,
-        name=None,
+        endpoint_url: Optional[str] = None,
+        aws_access_key_id: Optional[str] = None,
+        aws_secret_access_key: Optional[str] = None,
+        region_name: Optional[str] = None,
+        name: Optional[str] = None,
         proxy_config: Optional["ProxyConfig"] = None,
-    ):
+    ) -> None:
         """
         Initialize the S3-compatible storage client.
 
@@ -47,10 +50,10 @@ class S3Client(Client):
         self.proxy_config = proxy_config
 
         # These will be initialized in __enter__
-        self.s3_client = None
-        self.s3_resource = None
+        self.s3_client: Any = None  # boto3 client doesn't have good type stubs
+        self.s3_resource: Any = None
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         # Create session with provided credentials if any
         session = boto3.session.Session(
             aws_access_key_id=self.aws_access_key_id,
@@ -82,6 +85,7 @@ class S3Client(Client):
 
     def _build_proxy_url(self) -> str:
         """Build SOCKS5 proxy URL for boto3."""
+        assert self.proxy_config is not None, "Proxy config not set"
         if self.proxy_config.username and self.proxy_config.password:
             return (
                 f"socks5://{self.proxy_config.username}:{self.proxy_config.password}"
@@ -89,7 +93,12 @@ class S3Client(Client):
             )
         return f"socks5://{self.proxy_config.host}:{self.proxy_config.port}"
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         self.s3_client = None
         self.s3_resource = None
 
@@ -151,8 +160,8 @@ class S3Client(Client):
                     )
                     result.append(fd)
 
-        except ClientError:
-            pass
+        except ClientError as e:
+            raise ListingError(f"Failed to list directory '{path}': {e}")
 
         return result
 
@@ -161,17 +170,17 @@ class S3Client(Client):
         remote: PurePath,
         local: Path,
         progress_callback: Optional[Callable[[int], bool]] = None,
-    ):
+    ) -> None:
         # Format path for S3
         s3_path = self._format_path(remote)
 
         # Create a custom callback for download progress
         class ProgressTracker:
-            def __init__(self, callback):
+            def __init__(self, callback: Optional[Callable[[int], bool]]) -> None:
                 self.bytes_downloaded = 0
                 self.callback = callback
 
-            def __call__(self, bytes_amount):
+            def __call__(self, bytes_amount: int) -> bool:
                 self.bytes_downloaded += bytes_amount
                 if self.callback:
                     return self.callback(self.bytes_downloaded)
@@ -195,15 +204,15 @@ class S3Client(Client):
         local: Path,
         remote: PurePath,
         progress_callback: Optional[Callable[[int], bool]] = None,
-    ):
+    ) -> None:
         s3_path = self._format_path(remote)
 
         class ProgressTracker:
-            def __init__(self, callback):
+            def __init__(self, callback: Optional[Callable[[int], bool]]) -> None:
                 self.bytes_uploaded = 0
                 self.callback = callback
 
-            def __call__(self, bytes_amount):
+            def __call__(self, bytes_amount: int) -> bool:
                 self.bytes_uploaded += bytes_amount
                 if self.callback:
                     return self.callback(self.bytes_uploaded)

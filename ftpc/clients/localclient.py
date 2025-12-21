@@ -2,18 +2,26 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path, PurePath
-from typing import List
+from types import TracebackType
+from typing import Callable, List, Optional
+from typing_extensions import Self
 
 from ftpc.clients.client import Client
 from ftpc.filedescriptor import FileDescriptor, FileType
+from ftpc.exceptions import ListingError
 
 
 class LocalClient(Client):
-    def __enter__(self):
-        return super().__enter__()
+    def __enter__(self) -> Self:
+        return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        return super().__exit__(exc_type, exc_val, exc_tb)
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
+        pass
 
     def ls(self, path: PurePath) -> List[FileDescriptor]:
         result = []
@@ -39,17 +47,17 @@ class LocalClient(Client):
 
                 result.append(fd)
 
-        except (PermissionError, FileNotFoundError):
-            pass
+        except (PermissionError, FileNotFoundError) as e:
+            raise ListingError(f"Failed to list directory '{path}': {e}")
 
         return result
 
-    def get(self, remote: PurePath, local: Path, progress_callback=None):
+    def get(self, remote: PurePath, local: Path, progress_callback: Optional[Callable[[int], bool]] = None) -> None:
         shutil.copy2(remote, local)
         if progress_callback:
             progress_callback(os.stat(remote).st_size)
 
-    def put(self, local: Path, remote: PurePath, progress_callback=None):
+    def put(self, local: Path, remote: PurePath, progress_callback: Optional[Callable[[int], bool]] = None) -> None:
         shutil.copy2(local, remote)
         if progress_callback:
             progress_callback(os.stat(remote).st_size)
@@ -72,5 +80,5 @@ class LocalClient(Client):
         except (FileExistsError, PermissionError, OSError):
             return False
 
-    def name(self):
+    def name(self) -> str:
         return "Local Storage"

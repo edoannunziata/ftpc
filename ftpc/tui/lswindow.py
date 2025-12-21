@@ -1,4 +1,5 @@
 import curses
+from typing import Any, Optional
 
 from ftpc.displaydescriptor import DisplayDescriptor
 from ftpc.filedescriptor import DescriptorType
@@ -48,7 +49,7 @@ class LsWindow:
             self.first_visible_index + self.height, len(self.elements)
         )
 
-    def handle_resize(self):
+    def handle_resize(self) -> None:
         """Handle terminal resize event"""
         # Update height and width
         self.height = max(1, curses.LINES - 2)
@@ -91,7 +92,7 @@ class LsWindow:
             # Handle any curses errors during resize
             pass
 
-    def safe_addstr(self, window, y, x, text, attr=0):
+    def safe_addstr(self, window: Any, y: int, x: int, text: str, attr: int = 0) -> None:
         """Safe wrapper for addstr that handles boundaries and empty strings"""
         if not text:
             return
@@ -118,7 +119,7 @@ class LsWindow:
             # Fallback in case we hit curses error
             pass
 
-    def draw_window(self):
+    def draw_window(self) -> None:
         try:
             # Get the current terminal dimensions directly
             max_lines, max_cols = curses.LINES, curses.COLS
@@ -292,11 +293,11 @@ class LsWindow:
             pass
 
     @property
-    def elements(self):
+    def elements(self) -> list[DisplayDescriptor]:
         return self._elements
 
     @elements.setter
-    def elements(self, elements: list[DisplayDescriptor]):
+    def elements(self, elements: list[DisplayDescriptor]) -> None:
         self._elements = elements or []  # Ensure we never have None
         self.selected = 0
         self.first_visible_index = 0
@@ -304,37 +305,37 @@ class LsWindow:
         self.draw_window()
 
     @property
-    def top_text(self):
+    def top_text(self) -> str:
         return self._top_text
 
     @top_text.setter
-    def top_text(self, top_text: str):
+    def top_text(self, top_text: str) -> None:
         self._top_text = top_text if top_text else " "  # Ensure non-empty string
         self.draw_window()
 
     @property
-    def bottom_text(self):
+    def bottom_text(self) -> str:
         return self._bottom_text
 
     @bottom_text.setter
-    def bottom_text(self, bottom_text: str):
+    def bottom_text(self, bottom_text: str) -> None:
         self._bottom_text = (
             bottom_text if bottom_text else " "
         )  # Ensure non-empty string
         self.draw_window()
 
     @property
-    def bar_color(self):
+    def bar_color(self) -> int:
         return self._bar_color
 
     @bar_color.setter
-    def bar_color(self, color: int):
+    def bar_color(self, color: int) -> None:
         self._bar_color = color
         self.topbar.bkgd(" ", color)
         self.botbar.bkgd(" ", color)
         self.draw_window()
 
-    def select_first(self):
+    def select_first(self) -> None:
         if not self.elements:
             return
         self.selected = 0
@@ -342,7 +343,7 @@ class LsWindow:
         self.last_visible_index = min(self.height, len(self.elements))
         self.draw_window()
 
-    def select_last(self):
+    def select_last(self) -> None:
         if not self.elements:
             return
         self.selected = len(self.elements) - 1
@@ -350,7 +351,7 @@ class LsWindow:
         self.first_visible_index = max(0, self.last_visible_index - self.height)
         self.draw_window()
 
-    def select_previous(self):
+    def select_previous(self) -> None:
         if not self.elements or self.selected <= 0:
             return
 
@@ -361,7 +362,7 @@ class LsWindow:
             self.last_visible_index -= 1
         self.draw_window()
 
-    def select_next(self):
+    def select_next(self) -> None:
         if not self.elements or self.selected >= len(self.elements) - 1:
             return
 

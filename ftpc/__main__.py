@@ -2,6 +2,7 @@ import argparse
 import os
 import sys
 from pathlib import PurePath
+from typing import IO, Optional
 
 from ftpc.clients.client import Client
 from ftpc.clients.ftpclient import FtpClient
@@ -54,14 +55,14 @@ def create_client(remote_config: BaseRemoteConfig, remote_name: str) -> Client:
     """Create a client based on remote configuration type."""
     match remote_config.type:
         case "ftp":
-            ftp_config = remote_config  # type: FtpConfig
+            assert isinstance(remote_config, FtpConfig)
             return FtpClient(
-                ftp_config.url,
-                tls=ftp_config.tls,
-                username=ftp_config.username,
-                password=ftp_config.password,
-                name=ftp_config.name,
-                proxy_config=ftp_config.proxy,
+                remote_config.url,
+                tls=remote_config.tls,
+                username=remote_config.username,
+                password=remote_config.password,
+                name=remote_config.name,
+                proxy_config=remote_config.proxy,
             )
         case "local":
             return LocalClient()
@@ -72,14 +73,14 @@ def create_client(remote_config: BaseRemoteConfig, remote_name: str) -> Client:
                     "Install with: pip install azure-storage-file-datalake azure-identity"
                 )
 
-            azure_config = remote_config  # type: AzureConfig
+            assert isinstance(remote_config, AzureConfig)
             return AzureClient(
-                azure_config.url,
-                filesystem_name=azure_config.filesystem,
-                connection_string=azure_config.connection_string,
-                account_key=azure_config.account_key,
-                name=azure_config.name,
-                proxy_config=azure_config.proxy,
+                remote_config.url,
+                filesystem_name=remote_config.filesystem,
+                connection_string=remote_config.connection_string,
+                account_key=remote_config.account_key,
+                name=remote_config.name,
+                proxy_config=remote_config.proxy,
             )
         case "s3":
             if not S3_AVAILABLE:
@@ -88,15 +89,15 @@ def create_client(remote_config: BaseRemoteConfig, remote_name: str) -> Client:
                     "Install with: pip install boto3"
                 )
 
-            s3_config = remote_config  # type: S3Config
+            assert isinstance(remote_config, S3Config)
             return S3Client(
-                bucket_name=s3_config.get_bucket_name(),
-                endpoint_url=s3_config.endpoint_url,
-                aws_access_key_id=s3_config.aws_access_key_id,
-                aws_secret_access_key=s3_config.aws_secret_access_key,
-                region_name=s3_config.region_name,
-                name=s3_config.name,
-                proxy_config=s3_config.proxy,
+                bucket_name=remote_config.get_bucket_name(),
+                endpoint_url=remote_config.endpoint_url,
+                aws_access_key_id=remote_config.aws_access_key_id,
+                aws_secret_access_key=remote_config.aws_secret_access_key,
+                region_name=remote_config.region_name,
+                name=remote_config.name,
+                proxy_config=remote_config.proxy,
             )
         case "sftp":
             if not SFTP_AVAILABLE:
@@ -105,15 +106,15 @@ def create_client(remote_config: BaseRemoteConfig, remote_name: str) -> Client:
                     "Install with: pip install paramiko"
                 )
 
-            sftp_config = remote_config  # type: SftpConfig
+            assert isinstance(remote_config, SftpConfig)
             return SftpClient(
-                sftp_config.url,
-                port=sftp_config.port,
-                username=sftp_config.username,
-                password=sftp_config.password,
-                key_filename=sftp_config.key_filename,
-                name=sftp_config.name,
-                proxy_config=sftp_config.proxy,
+                remote_config.url,
+                port=remote_config.port,
+                username=remote_config.username,
+                password=remote_config.password,
+                key_filename=remote_config.key_filename,
+                name=remote_config.name,
+                proxy_config=remote_config.proxy,
             )
         case "blob":
             if not BLOB_AVAILABLE:
@@ -122,14 +123,14 @@ def create_client(remote_config: BaseRemoteConfig, remote_name: str) -> Client:
                     "Install with: pip install azure-storage-blob azure-identity"
                 )
 
-            blob_config = remote_config  # type: BlobConfig
+            assert isinstance(remote_config, BlobConfig)
             return AzureBlobClient(
-                blob_config.url,
-                container_name=blob_config.container,
-                connection_string=blob_config.connection_string,
-                account_key=blob_config.account_key,
-                name=blob_config.name,
-                proxy_config=blob_config.proxy,
+                remote_config.url,
+                container_name=remote_config.container,
+                connection_string=remote_config.connection_string,
+                account_key=remote_config.account_key,
+                name=remote_config.name,
+                proxy_config=remote_config.proxy,
             )
         case _:
             raise Exit(
@@ -168,7 +169,7 @@ def run_tui_loop(config: Config, initial_remote: str | None, initial_path: str) 
         path = "/"
 
 
-def config_file_type(path):
+def config_file_type(path: str) -> Optional[IO[bytes]]:
     """Custom FileType that doesn't error if default file doesn't exist."""
     default_config_path = os.path.expanduser("~/.ftpcconf.toml")
     # If it's the default path and doesn't exist, we'll handle the error later
@@ -177,7 +178,7 @@ def config_file_type(path):
     return open(path, "rb")
 
 
-def main():
+def main() -> None:
     """Main entry point for the ftpc application."""
     parser = argparse.ArgumentParser(
         prog="ftpc", description="connect to file storage services"

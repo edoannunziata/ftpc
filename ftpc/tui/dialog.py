@@ -1,5 +1,7 @@
 import curses
-from typing import List, Callable, Any
+from types import TracebackType
+from typing import List, Callable, Any, Optional
+from typing_extensions import Self
 
 
 def init_dialog_box(
@@ -8,7 +10,7 @@ def init_dialog_box(
     content: List[str],
     prompt: str = "Press Any key to continue",
     allowed_input: Callable[[str], bool] = lambda _: True,
-):
+) -> str:
     # Get screen dimensions
     height, width = stdscr.getmaxyx()
 
@@ -41,13 +43,14 @@ def init_dialog_box(
     dialog.refresh()
 
     while True:
-        if allowed_input(key := stdscr.getkey()):
+        key: str = stdscr.getkey()
+        if allowed_input(key):
             return key
 
 
 def show_dialog(
     stdscr: Any, title: str, content: List[str], prompt: str = "Press Any key to close"
-):
+) -> None:
     init_dialog_box(stdscr, title, content, prompt, lambda _: True)
 
 
@@ -151,11 +154,8 @@ def show_input_dialog(
         except curses.error:
             pass
 
-    curses.curs_set(0)
-    return None
 
-
-def show_help_dialog(stdscr: Any):
+def show_help_dialog(stdscr: Any) -> None:
     msg = [
         "Navigation Controls:",
         "  j, DOWN    - Move selection down",
@@ -191,7 +191,9 @@ class ProgressDialog:
         progress.update(512)  # Update with current bytes
     """
 
-    def __init__(self, stdscr, title, file_name, total_size):
+    def __init__(
+        self, stdscr: Any, title: str, file_name: str, total_size: Optional[int]
+    ) -> None:
         """
         Initialize a progress dialog.
 
@@ -204,15 +206,15 @@ class ProgressDialog:
         self.stdscr = stdscr
         self.title = title
         self.file_name = file_name
-        self.total_size = total_size
+        self.total_size = total_size if total_size is not None else 0
         self.current = 0
-        self.dialog = None
+        self.dialog: Any = None
         self.width = 0
         self.height = 0
         self.progress_width = 0
         self.canceled = False
 
-    def _create_dialog(self):
+    def _create_dialog(self) -> None:
         """Create the progress dialog window."""
         # Get screen dimensions
         height, width = self.stdscr.getmaxyx()
@@ -256,7 +258,7 @@ class ProgressDialog:
         # Refresh the dialog
         self.dialog.refresh()
 
-    def _format_size(self, size_bytes):
+    def _format_size(self, size_bytes: int) -> str:
         """Format size in bytes to a human-readable string."""
         if size_bytes < 1024:
             return f"{size_bytes} B"
@@ -267,7 +269,7 @@ class ProgressDialog:
         else:
             return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
 
-    def _draw_progress_bar(self, percentage):
+    def _draw_progress_bar(self, percentage: float) -> None:
         """Draw the progress bar with the given percentage."""
         # Clear the line
         self.dialog.addstr(3, 2, " " * (self.width - 4))
@@ -293,7 +295,7 @@ class ProgressDialog:
         # Refresh the dialog
         self.dialog.refresh()
 
-    def update(self, current_bytes):
+    def update(self, current_bytes: int) -> bool:
         """
         Update the progress bar.
 
@@ -322,7 +324,7 @@ class ProgressDialog:
             if key.lower() == "q":
                 self.canceled = True
                 return False
-        except curses.error:
+        except (curses.error, Exception):
             # No input available (expected in nodelay mode)
             pass
         finally:
@@ -331,17 +333,22 @@ class ProgressDialog:
         return True
 
     @property
-    def is_canceled(self):
+    def is_canceled(self) -> bool:
         """Return True if the transfer was canceled by the user."""
         return self.canceled
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         """Enter the context manager."""
         # Create the dialog when entering the context
         self._create_dialog()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         """Exit the context manager."""
         # Close the dialog when exiting the context
         if self.dialog:
@@ -349,5 +356,3 @@ class ProgressDialog:
         # Redraw the screen
         self.stdscr.touchwin()
         self.stdscr.refresh()
-        # Return False to propagate exceptions
-        return False

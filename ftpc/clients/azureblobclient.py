@@ -1,5 +1,7 @@
 from pathlib import Path, PurePath, PurePosixPath
-from typing import List, Optional, Callable, TYPE_CHECKING
+from types import TracebackType
+from typing import Any, Dict, List, Optional, Callable, TYPE_CHECKING
+from typing_extensions import Self
 
 from azure.storage.blob import BlobServiceClient, ContainerClient, BlobPrefix
 from azure.core.exceptions import ResourceNotFoundError, HttpResponseError
@@ -7,6 +9,7 @@ from azure.identity import DefaultAzureCredential
 
 from ftpc.clients.client import Client
 from ftpc.filedescriptor import FileDescriptor, FileType
+from ftpc.exceptions import ListingError
 
 if TYPE_CHECKING:
     from ftpc.config import ProxyConfig
@@ -15,15 +18,15 @@ if TYPE_CHECKING:
 class AzureBlobClient(Client):
     def __init__(
         self,
-        account_url,
+        account_url: str,
         *,
-        container_name,
-        connection_string=None,
-        account_key=None,
-        credential=None,
-        name=None,
+        container_name: str,
+        connection_string: Optional[str] = None,
+        account_key: Optional[str] = None,
+        credential: Optional[Any] = None,
+        name: Optional[str] = None,
         proxy_config: Optional["ProxyConfig"] = None,
-    ):
+    ) -> None:
         """
         Initialize the Azure Blob Storage client.
 
@@ -48,12 +51,13 @@ class AzureBlobClient(Client):
         self.service_client: Optional[BlobServiceClient] = None
         self.container_client: Optional[ContainerClient] = None
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         # Initialize credential if not provided
         if not self._credential and not self.connection_string and not self.account_key:
             self._credential = DefaultAzureCredential()
 
         # Create transport with proxy if configured
+        proxies: Optional[Dict[str, str]] = None
         if self.proxy_config:
             proxy_url = self._build_proxy_url()
             proxies = {"http": proxy_url, "https": proxy_url}
@@ -86,6 +90,7 @@ class AzureBlobClient(Client):
 
     def _build_proxy_url(self) -> str:
         """Build SOCKS5 proxy URL for Azure SDK."""
+        assert self.proxy_config is not None, "Proxy config not set"
         if self.proxy_config.username and self.proxy_config.password:
             return (
                 f"socks5h://{self.proxy_config.username}:{self.proxy_config.password}"
@@ -93,7 +98,12 @@ class AzureBlobClient(Client):
             )
         return f"socks5h://{self.proxy_config.host}:{self.proxy_config.port}"
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         self.container_client = None
         self.service_client = None
 
@@ -101,6 +111,7 @@ class AzureBlobClient(Client):
         return self._name
 
     def ls(self, path: PurePath) -> List[FileDescriptor]:
+        assert self.container_client is not None, "Client not connected"
         result = []
 
         # Convert path to string format that Blob Storage expects
@@ -149,8 +160,8 @@ class AzureBlobClient(Client):
                     )
                     result.append(fd)
 
-        except (ResourceNotFoundError, HttpResponseError):
-            pass
+        except (ResourceNotFoundError, HttpResponseError) as e:
+            raise ListingError(f"Failed to list directory '{path}': {e}")
 
         return result
 
@@ -159,7 +170,8 @@ class AzureBlobClient(Client):
         remote: PurePath,
         local: Path,
         progress_callback: Optional[Callable[[int], bool]] = None,
-    ):
+    ) -> None:
+        assert self.container_client is not None, "Client not connected"
         blob_path = self._format_path(remote)
 
         try:
@@ -188,7 +200,8 @@ class AzureBlobClient(Client):
         local: Path,
         remote: PurePath,
         progress_callback: Optional[Callable[[int], bool]] = None,
-    ):
+    ) -> None:
+        assert self.container_client is not None, "Client not connected"
         blob_path = self._format_path(remote)
 
         try:
@@ -210,6 +223,7 @@ class AzureBlobClient(Client):
             pass
 
     def unlink(self, remote: PurePath) -> bool:
+        assert self.container_client is not None, "Client not connected"
         try:
             blob_path = self._format_path(remote)
             blob_client = self.container_client.get_blob_client(blob_path)
@@ -219,6 +233,7 @@ class AzureBlobClient(Client):
             return False
 
     def mkdir(self, remote: PurePath) -> bool:
+        assert self.container_client is not None, "Client not connected"
         try:
             # Blob Storage doesn't have real directories, but we can create a
             # placeholder blob with a trailing slash to simulate a directory

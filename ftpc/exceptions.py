@@ -1,8 +1,4 @@
-"""Centralized exception definitions for FTPC.
-
-This module provides a consistent exception hierarchy for the entire application.
-All custom exceptions inherit from FtpcError for easy catching of application-specific errors.
-"""
+"""Centralized exception definitions for FTPC."""
 
 from ftplib import error_perm, error_temp, error_reply
 
@@ -11,9 +7,7 @@ class FtpcError(Exception):
     """Base exception for all FTPC errors."""
 
 
-# =============================================================================
 # Configuration Exceptions
-# =============================================================================
 
 
 class ConfigError(FtpcError):
@@ -28,9 +22,7 @@ class ValidationError(ConfigError):
     """Exception raised when configuration validation fails."""
 
 
-# =============================================================================
 # Client/Connection Exceptions
-# =============================================================================
 
 
 class ClientError(FtpcError):
@@ -61,19 +53,14 @@ class NotFoundError(ClientError):
     """Remote file or directory not found."""
 
 
-# =============================================================================
 # FTP-Specific Exceptions
-# =============================================================================
 
-# Re-export ftplib exceptions for convenience
 FtpPermError = error_perm
 FtpTempError = error_temp
 FtpReplyError = error_reply
 
 
-# =============================================================================
 # TUI Exceptions
-# =============================================================================
 
 
 class TuiError(FtpcError):

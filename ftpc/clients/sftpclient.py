@@ -1,14 +1,19 @@
 from pathlib import Path, PurePath, PurePosixPath
-from typing import List, Optional, Callable, TYPE_CHECKING
+from types import TracebackType
+from typing import Any, List, Optional, Callable, TYPE_CHECKING
+from typing_extensions import Self
+import socket
 import stat
 from datetime import datetime
 import os.path
 
 import paramiko
+from paramiko.sftp_attr import SFTPAttributes
 from paramiko.ssh_exception import SSHException
 
 from ftpc.clients.client import Client
 from ftpc.filedescriptor import FileDescriptor, FileType
+from ftpc.exceptions import ListingError
 
 if TYPE_CHECKING:
     from ftpc.config import ProxyConfig
@@ -24,15 +29,15 @@ except ImportError:
 class SftpClient(Client):
     def __init__(
         self,
-        host,
+        host: str,
         *,
-        port=22,
-        username=None,
-        password=None,
-        key_filename=None,
-        name=None,
+        port: int = 22,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        key_filename: Optional[str] = None,
+        name: Optional[str] = None,
         proxy_config: Optional["ProxyConfig"] = None,
-    ):
+    ) -> None:
         """
         Initialize the SFTP client.
 
@@ -54,11 +59,11 @@ class SftpClient(Client):
         self.proxy_config = proxy_config
 
         # These will be initialized in __enter__
-        self.ssh_client = None
-        self.sftp_client = None
-        self._proxy_socket = None
+        self.ssh_client: Optional[paramiko.SSHClient] = None
+        self.sftp_client: Optional[paramiko.SFTPClient] = None
+        self._proxy_socket: Optional[socket.socket] = None
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         try:
             self.ssh_client = paramiko.SSHClient()
             self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -77,7 +82,7 @@ class SftpClient(Client):
                         "Install with: pip install pysocks"
                     )
                 self._proxy_socket = socks.socksocket()
-                self._proxy_socket.set_proxy(
+                self._proxy_socket.set_proxy(  # type: ignore[union-attr]
                     socks.SOCKS5,
                     self.proxy_config.host,
                     self.proxy_config.port,
@@ -113,7 +118,12 @@ class SftpClient(Client):
                 self.ssh_client = None
             raise RuntimeError(f"Failed to connect to SFTP server: {str(e)}")
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         if self.sftp_client:
             self.sftp_client.close()
             self.sftp_client = None
@@ -130,6 +140,7 @@ class SftpClient(Client):
         return self._name
 
     def ls(self, remote: PurePath) -> List[FileDescriptor]:
+        assert self.sftp_client is not None, "Client not connected"
         result = []
 
         try:
@@ -142,8 +153,8 @@ class SftpClient(Client):
                 fd = self._stat_to_file_descriptor(attr, PurePosixPath(attr.filename))
                 result.append(fd)
 
-        except (SSHException, IOError):
-            pass
+        except (SSHException, IOError) as e:
+            raise ListingError(f"Failed to list directory '{remote}': {e}")
 
         return result
 
@@ -152,7 +163,8 @@ class SftpClient(Client):
         remote: PurePath,
         local: Path,
         progress_callback: Optional[Callable[[int], bool]] = None,
-    ):
+    ) -> None:
+        assert self.sftp_client is not None, "Client not connected"
         try:
             remote_path = self._format_path(remote)
             local_path = str(local)
@@ -160,17 +172,17 @@ class SftpClient(Client):
             if progress_callback:
                 try:
                     remote_stat = self.sftp_client.stat(remote_path)
-                    total_size = remote_stat.st_size
+                    total_size = remote_stat.st_size if remote_stat.st_size else 0
                 except (SSHException, IOError):
                     total_size = 0  # Unknown size
 
                 class ProgressTracker:
-                    def __init__(self, callback, total):
+                    def __init__(self, callback: Callable[[int], bool], total: int) -> None:
                         self.bytes_processed = 0
                         self.callback = callback
                         self.total = total
 
-                    def __call__(self, bytes_transferred, total_transferred):
+                    def __call__(self, bytes_transferred: int, total_transferred: int) -> bool:
                         self.bytes_processed = total_transferred
                         return self.callback(self.bytes_processed)
 
@@ -188,7 +200,8 @@ class SftpClient(Client):
         local: Path,
         remote: PurePath,
         progress_callback: Optional[Callable[[int], bool]] = None,
-    ):
+    ) -> None:
+        assert self.sftp_client is not None, "Client not connected"
         try:
             remote_path = self._format_path(remote)
             local_path = str(local)
@@ -197,12 +210,12 @@ class SftpClient(Client):
                 total_size = os.path.getsize(local_path)
 
                 class ProgressTracker:
-                    def __init__(self, callback, total):
+                    def __init__(self, callback: Callable[[int], bool], total: int) -> None:
                         self.bytes_processed = 0
                         self.callback = callback
                         self.total = total
 
-                    def __call__(self, bytes_transferred, total_transferred):
+                    def __call__(self, bytes_transferred: int, total_transferred: int) -> bool:
                         self.bytes_processed = total_transferred
                         return self.callback(self.bytes_processed)
 
@@ -216,6 +229,7 @@ class SftpClient(Client):
             pass
 
     def unlink(self, remote: PurePath) -> bool:
+        assert self.sftp_client is not None, "Client not connected"
         try:
             remote_path = self._format_path(remote)
             self.sftp_client.remove(remote_path)
@@ -224,6 +238,7 @@ class SftpClient(Client):
             return False
 
     def mkdir(self, remote: PurePath) -> bool:
+        assert self.sftp_client is not None, "Client not connected"
         try:
             remote_path = self._format_path(remote)
             self.sftp_client.mkdir(remote_path)
@@ -234,9 +249,9 @@ class SftpClient(Client):
     def _format_path(self, path: PurePath) -> str:
         return path.as_posix()
 
-    def _stat_to_file_descriptor(self, attr, path: PurePath) -> FileDescriptor:
+    def _stat_to_file_descriptor(self, attr: SFTPAttributes, path: PurePath) -> FileDescriptor:
         # Determine if it's a file or directory
-        if stat.S_ISDIR(attr.st_mode):
+        if attr.st_mode is not None and stat.S_ISDIR(attr.st_mode):
             filetype = FileType.DIRECTORY
         else:
             filetype = FileType.FILE
@@ -248,7 +263,7 @@ class SftpClient(Client):
             size=attr.st_size if filetype == FileType.FILE else None,
             modified_time=(
                 datetime.fromtimestamp(attr.st_mtime)
-                if hasattr(attr, "st_mtime")
+                if attr.st_mtime is not None
                 else None
             ),
         )

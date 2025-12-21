@@ -67,7 +67,7 @@ where = ["."]
 include = ["ftpc*"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
@@ -80,3 +80,13 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = [
+    "boto3.*",
+    "botocore.*",
+    "paramiko.*",
+    "socks",
+    "azure.*",
+]
+ignore_missing_imports = true

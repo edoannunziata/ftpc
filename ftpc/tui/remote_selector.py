@@ -1,5 +1,5 @@
 import curses
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from ftpc.config.base import BaseRemoteConfig
 from ftpc.displaydescriptor import RemoteDisplayDescriptor
@@ -10,7 +10,7 @@ from ftpc.tui.dialog import show_dialog, show_input_dialog
 class RemoteSelector:
     """Interactive remote selection menu using curses."""
 
-    def __init__(self, remotes: Dict[str, BaseRemoteConfig]):
+    def __init__(self, remotes: Dict[str, BaseRemoteConfig]) -> None:
         self.remotes = remotes
         self.remote_descriptors = [
             RemoteDisplayDescriptor(
@@ -22,7 +22,7 @@ class RemoteSelector:
         ]
         self.selected_path = "/"
         self.lswindow: Optional[LsWindow] = None
-        self.stdscr = None
+        self.stdscr: Any = None
 
     def start(self) -> Optional[tuple[str, str]]:
         """Run the selector.
@@ -33,7 +33,7 @@ class RemoteSelector:
         """
         return curses.wrapper(self._main_loop)
 
-    def _tui_init(self):
+    def _tui_init(self) -> None:
         curses.curs_set(0)  # Hide cursor
 
         # Clear screen
@@ -64,15 +64,16 @@ class RemoteSelector:
             bottom_text="Press ? for help, i for details, o to set path"
         )
 
-        self.lswindow.elements = self.remote_descriptors
+        self.lswindow.elements = self.remote_descriptors  # type: ignore[assignment]
 
-    def _redraw(self):
+    def _redraw(self) -> None:
         """Redraw the screen after dialogs."""
+        assert self.lswindow is not None, "LsWindow not initialized"
         self.stdscr.clear()
         self.stdscr.refresh()
         self.lswindow.draw_window()
 
-    def _show_help(self):
+    def _show_help(self) -> None:
         """Show help dialog for remote selector."""
         msg = [
             "Navigation:",
@@ -94,7 +95,7 @@ class RemoteSelector:
         show_dialog(self.stdscr, title="Remote Selector Help", content=msg)
         self._redraw()
 
-    def _show_details(self, remote_desc: RemoteDisplayDescriptor):
+    def _show_details(self, remote_desc: RemoteDisplayDescriptor) -> None:
         """Show details dialog for a remote."""
         config = remote_desc.config
         lines = [
@@ -129,8 +130,9 @@ class RemoteSelector:
         )
         self._redraw()
 
-    def _set_path(self):
+    def _set_path(self) -> None:
         """Show dialog to set custom starting path."""
+        assert self.lswindow is not None, "LsWindow not initialized"
         path = show_input_dialog(
             self.stdscr,
             title="Starting Path",
@@ -141,8 +143,9 @@ class RemoteSelector:
             self.lswindow.bottom_text = f"Path: {self.selected_path} | ? help, i details"
         self._redraw()
 
-    def _search(self):
+    def _search(self) -> None:
         """Search for a remote by name prefix."""
+        assert self.lswindow is not None, "LsWindow not initialized"
         original_bottom_text = self.lswindow.bottom_text
         self.lswindow.bottom_text = "Search: "
         search_string = ""
@@ -179,9 +182,10 @@ class RemoteSelector:
         curses.curs_set(0)
         self.lswindow.bottom_text = original_bottom_text
 
-    def _main_loop(self, stdscr) -> Optional[tuple[str, str]]:
+    def _main_loop(self, stdscr: Any) -> Optional[tuple[str, str]]:
         self.stdscr = stdscr
         self._tui_init()
+        assert self.lswindow is not None, "LsWindow not initialized"
 
         while True:
             match stdscr.getkey():
@@ -214,9 +218,9 @@ class RemoteSelector:
                 case "KEY_RESIZE":
                     self._handle_resize()
 
-    def _handle_resize(self):
+    def _handle_resize(self) -> None:
         """Handle terminal resize."""
-        if self.stdscr and self.lswindow:
+        if self.lswindow is not None:
             try:
                 curses.update_lines_cols()
                 self._tui_init()

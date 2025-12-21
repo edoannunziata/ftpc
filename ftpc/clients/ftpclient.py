@@ -1,12 +1,19 @@
 from ftplib import FTP, FTP_TLS, error_perm, error_temp, error_reply
 from pathlib import Path, PurePosixPath, PurePath
 from datetime import datetime
-from typing import List, Optional, TYPE_CHECKING
+from types import TracebackType
+from typing import Any, Callable, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing_extensions import Self
 import re
 import socket
 
 from ftpc.clients.client import Client
 from ftpc.filedescriptor import FileDescriptor, FileType
+from ftpc.exceptions import (
+    ConnectionError,
+    AuthenticationError,
+    ListingError,
+)
 
 if TYPE_CHECKING:
     from ftpc.config import ProxyConfig
@@ -29,8 +36,8 @@ class Socks5FTP(FTP):
         proxy_port: int = 1080,
         proxy_username: Optional[str] = None,
         proxy_password: Optional[str] = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         self.proxy_host = proxy_host
         self.proxy_port = proxy_port
         self.proxy_username = proxy_username
@@ -38,22 +45,26 @@ class Socks5FTP(FTP):
         super().__init__(host, **kwargs)
 
     def connect(
-        self, host: str = "", port: int = 0, timeout: float = -999, source_address=None
-    ):
+        self,
+        host: str = "",
+        port: int = 0,
+        timeout: float = -999,
+        source_address: Optional[Tuple[str, int]] = None,
+    ) -> str:
         """Connect to FTP server through SOCKS5 proxy."""
         if not host:
             host = self.host
         if not port:
             port = self.port
         if timeout == -999:
-            timeout = self.timeout
+            timeout = self.timeout  # type: ignore[assignment]
 
         self.host = host
         self.port = port
 
         # Create SOCKS5 socket
         self.sock = socks.socksocket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.set_proxy(
+        self.sock.set_proxy(  # type: ignore[union-attr]
             socks.SOCKS5,
             self.proxy_host,
             self.proxy_port,
@@ -68,9 +79,9 @@ class Socks5FTP(FTP):
         self.welcome = self.getresp()
         return self.welcome
 
-    def ntransfercmd(self, cmd, rest=None):
+    def ntransfercmd(self, cmd: str, rest: Optional[int] = None) -> Tuple[socket.socket, Optional[int]]:  # type: ignore[override]
         """Override to route data connections through SOCKS5 proxy."""
-        size = None
+        size: Optional[int] = None
         if self.passiveserver:
             host, port = self.makepasv()
             # Create SOCKS5 socket for data connection
@@ -115,20 +126,20 @@ class Socks5FTP_TLS(FTP_TLS, Socks5FTP):
         proxy_port: int = 1080,
         proxy_username: Optional[str] = None,
         proxy_password: Optional[str] = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         self.proxy_host = proxy_host
         self.proxy_port = proxy_port
         self.proxy_username = proxy_username
         self.proxy_password = proxy_password
         FTP_TLS.__init__(self, host, **kwargs)
 
-    def ntransfercmd(self, cmd, rest=None):
+    def ntransfercmd(self, cmd: str, rest: Optional[int] = None) -> Tuple[socket.socket, Optional[int]]:  # type: ignore[override]
         """Override to route data connections through SOCKS5 proxy and wrap with TLS."""
         conn, size = Socks5FTP.ntransfercmd(self, cmd, rest)
-        if self._prot_p:
+        if self._prot_p:  # type: ignore[attr-defined]
             conn = self.context.wrap_socket(
-                conn, server_hostname=self.host, session=self.sock.session
+                conn, server_hostname=self.host, session=self.sock.session  # type: ignore[union-attr]
             )
         return conn, size
 
@@ -136,61 +147,77 @@ class Socks5FTP_TLS(FTP_TLS, Socks5FTP):
 class FtpClient(Client):
     def __init__(
         self,
-        url,
+        url: str,
         *,
-        tls=True,
-        username="",
-        password="",
-        name="",
+        tls: bool = True,
+        username: str = "",
+        password: str = "",
+        name: str = "",
         proxy_config: Optional["ProxyConfig"] = None,
-    ):
+    ) -> None:
         self.url = url
         self.tls = tls
         self.username = username
         self.password = password
-        self.ftp_client = None
+        self.ftp_client: Optional[Union[FTP, FTP_TLS, Socks5FTP, Socks5FTP_TLS]] = None
         self._name = name if name else url
         self.proxy_config = proxy_config
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         if self.proxy_config:
             if not SOCKS_AVAILABLE:
                 raise RuntimeError(
                     "PySocks is required for SOCKS5 proxy support. "
                     "Install with: pip install pysocks"
                 )
-            if self.tls:
-                self.ftp_client = Socks5FTP_TLS(
-                    self.url,
-                    proxy_host=self.proxy_config.host,
-                    proxy_port=self.proxy_config.port,
-                    proxy_username=self.proxy_config.username,
-                    proxy_password=self.proxy_config.password,
-                )
-                self.ftp_client.auth()
-                self.ftp_client.login(user=self.username, passwd=self.password)
-                self.ftp_client.prot_p()
+        try:
+            if self.proxy_config:
+                if self.tls:
+                    self.ftp_client = Socks5FTP_TLS(
+                        self.url,
+                        proxy_host=self.proxy_config.host,
+                        proxy_port=self.proxy_config.port,
+                        proxy_username=self.proxy_config.username,
+                        proxy_password=self.proxy_config.password,
+                    )
+                    self.ftp_client.auth()
+                    self.ftp_client.login(user=self.username, passwd=self.password)
+                    self.ftp_client.prot_p()
+                else:
+                    self.ftp_client = Socks5FTP(
+                        self.url,
+                        proxy_host=self.proxy_config.host,
+                        proxy_port=self.proxy_config.port,
+                        proxy_username=self.proxy_config.username,
+                        proxy_password=self.proxy_config.password,
+                    )
+                    self.ftp_client.login(user=self.username, passwd=self.password)
             else:
-                self.ftp_client = Socks5FTP(
-                    self.url,
-                    proxy_host=self.proxy_config.host,
-                    proxy_port=self.proxy_config.port,
-                    proxy_username=self.proxy_config.username,
-                    proxy_password=self.proxy_config.password,
-                )
-                self.ftp_client.login(user=self.username, passwd=self.password)
-        else:
-            if self.tls:
-                self.ftp_client = FTP_TLS(self.url)
-                self.ftp_client.auth()
-                self.ftp_client.login(user=self.username, passwd=self.password)
-                self.ftp_client.prot_p()
-            else:
-                self.ftp_client = FTP(self.url)
-                self.ftp_client.login(user=self.username, passwd=self.password)
+                if self.tls:
+                    self.ftp_client = FTP_TLS(self.url)
+                    self.ftp_client.auth()
+                    self.ftp_client.login(user=self.username, passwd=self.password)
+                    self.ftp_client.prot_p()
+                else:
+                    self.ftp_client = FTP(self.url)
+                    self.ftp_client.login(user=self.username, passwd=self.password)
+        except error_perm as e:
+            error_str = str(e)
+            if "530" in error_str:
+                raise AuthenticationError(f"Authentication failed: {error_str}")
+            raise ConnectionError(f"FTP error: {error_str}")
+        except (socket.gaierror, socket.timeout, OSError) as e:
+            raise ConnectionError(f"Failed to connect to {self.url}: {e}")
+        except (error_temp, error_reply) as e:
+            raise ConnectionError(f"FTP error: {e}")
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         if self.ftp_client:
             try:
                 self.ftp_client.quit()
@@ -202,6 +229,7 @@ class FtpClient(Client):
         return self._name
 
     def ls(self, path: PurePath) -> List[FileDescriptor]:
+        assert self.ftp_client is not None, "Client not connected"
         result = []
 
         try:
@@ -232,10 +260,10 @@ class FtpClient(Client):
                     )
                     result.append(fd)
 
-        except (error_perm, error_temp, error_reply, OSError, EOFError):
+        except (error_perm, error_temp, error_reply, OSError, EOFError) as e:
             # FTP errors: permission denied, temporary failure, protocol error
             # OSError: network issues, EOFError: connection closed
-            pass
+            raise ListingError(f"Failed to list directory '{path}': {e}")
 
         return result
 
@@ -249,6 +277,7 @@ class FtpClient(Client):
         Returns:
             True if the path is a directory, False otherwise
         """
+        assert self.ftp_client is not None, "Client not connected"
         original_dir = self.ftp_client.pwd()
         try:
             self.ftp_client.cwd(path_str)
@@ -330,23 +359,34 @@ class FtpClient(Client):
         # If we couldn't parse the line format, return None
         return None
 
-    def get(self, remote: PurePath, local: Path, progress_callback=None):
+    def get(
+        self,
+        remote: PurePath,
+        local: Path,
+        progress_callback: Optional[Callable[[int], bool]] = None,
+    ) -> None:
+        assert self.ftp_client is not None, "Client not connected"
         with open(local, "wb+") as fp:
             if progress_callback:
                 bytes_so_far = 0
 
-                def callback(data):
+                def callback(data: bytes) -> None:
                     nonlocal bytes_so_far
                     bytes_so_far += len(data)
                     fp.write(data)
-                    return progress_callback(bytes_so_far)
+                    progress_callback(bytes_so_far)
 
+                self.ftp_client.retrbinary(f"RETR {remote.as_posix()}", callback)
             else:
-                callback = fp.write
+                self.ftp_client.retrbinary(f"RETR {remote.as_posix()}", fp.write)
 
-            self.ftp_client.retrbinary(f"RETR {remote.as_posix()}", callback)
-
-    def put(self, local: Path, remote: PurePath, progress_callback=None):
+    def put(
+        self,
+        local: Path,
+        remote: PurePath,
+        progress_callback: Optional[Callable[[int], bool]] = None,
+    ) -> None:
+        assert self.ftp_client is not None, "Client not connected"
         cmd = f"STOR {remote.as_posix()}"
         with open(local, "rb+") as fp:
             self.ftp_client.voidcmd("TYPE I")
@@ -368,17 +408,19 @@ class FtpClient(Client):
                 self.ftp_client.voidresp()
 
     def unlink(self, remote: PurePath) -> bool:
+        assert self.ftp_client is not None, "Client not connected"
         try:
             self.ftp_client.delete(remote.as_posix())
             return True
-        except (error_perm, error_temp, error_reply, OSError, EOFError):
+        except (error_perm, error_temp, error_reply, OSError, EOFError, Exception):
             # Permission denied, file not found, or connection issues
             return False
 
     def mkdir(self, remote: PurePath) -> bool:
+        assert self.ftp_client is not None, "Client not connected"
         try:
             self.ftp_client.mkd(remote.as_posix())
             return True
-        except (error_perm, error_temp, error_reply, OSError, EOFError):
+        except (error_perm, error_temp, error_reply, OSError, EOFError, Exception):
             # Permission denied, directory exists, or connection issues
             return False
