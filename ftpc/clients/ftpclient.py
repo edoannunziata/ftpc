@@ -37,7 +37,9 @@ class Socks5FTP(FTP):
         self.proxy_password = proxy_password
         super().__init__(host, **kwargs)
 
-    def connect(self, host: str = "", port: int = 0, timeout: float = -999, source_address=None):
+    def connect(
+        self, host: str = "", port: int = 0, timeout: float = -999, source_address=None
+    ):
         """Connect to FTP server through SOCKS5 proxy."""
         if not host:
             host = self.host
@@ -90,7 +92,7 @@ class Socks5FTP(FTP):
                     resp = self.getresp()
                 if resp[0] != "1":
                     raise Exception(resp)
-            except:
+            except Exception:
                 conn.close()
                 raise
             if resp[:3] == "150":
@@ -165,6 +167,7 @@ class FtpClient(Client):
                     proxy_username=self.proxy_config.username,
                     proxy_password=self.proxy_config.password,
                 )
+                self.ftp_client.auth()
                 self.ftp_client.login(user=self.username, passwd=self.password)
                 self.ftp_client.prot_p()
             else:
@@ -179,6 +182,7 @@ class FtpClient(Client):
         else:
             if self.tls:
                 self.ftp_client = FTP_TLS(self.url)
+                self.ftp_client.auth()
                 self.ftp_client.login(user=self.username, passwd=self.password)
                 self.ftp_client.prot_p()
             else:
