@@ -145,6 +145,15 @@ class Socks5FTP_TLS(FTP_TLS, Socks5FTP):
 
 
 class FtpClient(Client):
+    # Directory listing patterns
+    _UNIX_PATTERN = re.compile(
+        r"^([\-ld])([rwxs\-]{9})\s+(\d+)\s+(\S+)\s+(\S+)\s+(\d+)\s+"
+        r"(\w{3}\s+\d{1,2}\s+(?:\d{1,2}:\d{1,2}|\d{4}))\s+(.+)$"
+    )
+    _WINDOWS_PATTERN = re.compile(
+        r"^(\d{2}-\d{2}-\d{2}\s+\d{2}:\d{2}[AP]M)\s+(<DIR>|\d+)\s+(.+)$"
+    )
+
     def __init__(
         self,
         url: str,
@@ -164,43 +173,15 @@ class FtpClient(Client):
         self.proxy_config = proxy_config
 
     def __enter__(self) -> Self:
-        if self.proxy_config:
-            if not SOCKS_AVAILABLE:
-                raise RuntimeError(
-                    "PySocks is required for SOCKS5 proxy support. "
-                    "Install with: pip install pysocks"
-                )
+        if self.proxy_config and not SOCKS_AVAILABLE:
+            raise RuntimeError(
+                "PySocks is required for SOCKS5 proxy support. "
+                "Install with: pip install pysocks"
+            )
+
         try:
-            if self.proxy_config:
-                if self.tls:
-                    self.ftp_client = Socks5FTP_TLS(
-                        self.url,
-                        proxy_host=self.proxy_config.host,
-                        proxy_port=self.proxy_config.port,
-                        proxy_username=self.proxy_config.username,
-                        proxy_password=self.proxy_config.password,
-                    )
-                    self.ftp_client.auth()
-                    self.ftp_client.login(user=self.username, passwd=self.password)
-                    self.ftp_client.prot_p()
-                else:
-                    self.ftp_client = Socks5FTP(
-                        self.url,
-                        proxy_host=self.proxy_config.host,
-                        proxy_port=self.proxy_config.port,
-                        proxy_username=self.proxy_config.username,
-                        proxy_password=self.proxy_config.password,
-                    )
-                    self.ftp_client.login(user=self.username, passwd=self.password)
-            else:
-                if self.tls:
-                    self.ftp_client = FTP_TLS(self.url)
-                    self.ftp_client.auth()
-                    self.ftp_client.login(user=self.username, passwd=self.password)
-                    self.ftp_client.prot_p()
-                else:
-                    self.ftp_client = FTP(self.url)
-                    self.ftp_client.login(user=self.username, passwd=self.password)
+            self.ftp_client = self._create_client()
+            self._login()
         except error_perm as e:
             error_str = str(e)
             if "530" in error_str:
@@ -211,6 +192,28 @@ class FtpClient(Client):
         except (error_temp, error_reply) as e:
             raise ConnectionError(f"FTP error: {e}")
         return self
+
+    def _create_client(self) -> Union[FTP, FTP_TLS, Socks5FTP, Socks5FTP_TLS]:
+        """Create appropriate FTP client based on TLS and proxy settings."""
+        if self.proxy_config:
+            cls = Socks5FTP_TLS if self.tls else Socks5FTP
+            return cls(
+                self.url,
+                proxy_host=self.proxy_config.host,
+                proxy_port=self.proxy_config.port,
+                proxy_username=self.proxy_config.username,
+                proxy_password=self.proxy_config.password,
+            )
+        return FTP_TLS(self.url) if self.tls else FTP(self.url)
+
+    def _login(self) -> None:
+        """Authenticate and enable TLS protection if applicable."""
+        assert self.ftp_client is not None, "Client not created"
+        if self.tls:
+            self.ftp_client.auth()  # type: ignore[union-attr]
+        self.ftp_client.login(user=self.username, passwd=self.password)
+        if self.tls:
+            self.ftp_client.prot_p()  # type: ignore[union-attr]
 
     def __exit__(
         self,
@@ -293,16 +296,8 @@ class FtpClient(Client):
                 pass
 
     def _parse_list_line(self, line: str) -> FileDescriptor | None:
-        # Unix-style listing (most common)
-        unix_pattern = r"^([\-ld])([rwxs\-]{9})\s+(\d+)\s+(\S+)\s+(\S+)\s+(\d+)\s+(\w{3}\s+\d{1,2}\s+(?:\d{1,2}:\d{1,2}|\d{4}))\s+(.+)$"
-
-        # Windows-style listing
-        windows_pattern = (
-            r"^(\d{2}-\d{2}-\d{2}\s+\d{2}:\d{2}[AP]M)\s+(<DIR>|\d+)\s+(.+)$"
-        )
-
         # Try Unix style first
-        unix_match = re.match(unix_pattern, line)
+        unix_match = self._UNIX_PATTERN.match(line)
         if unix_match:
             file_type = (
                 FileType.DIRECTORY if unix_match.group(1) == "d" else FileType.FILE
@@ -331,7 +326,7 @@ class FtpClient(Client):
             )
 
         # Try Windows style
-        windows_match = re.match(windows_pattern, line)
+        windows_match = self._WINDOWS_PATTERN.match(line)
         if windows_match:
             # Parse the date
             try:
@@ -412,8 +407,7 @@ class FtpClient(Client):
         try:
             self.ftp_client.delete(remote.as_posix())
             return True
-        except (error_perm, error_temp, error_reply, OSError, EOFError, Exception):
-            # Permission denied, file not found, or connection issues
+        except (error_perm, error_temp, error_reply, OSError, EOFError):
             return False
 
     def mkdir(self, remote: PurePath) -> bool:
@@ -421,6 +415,5 @@ class FtpClient(Client):
         try:
             self.ftp_client.mkd(remote.as_posix())
             return True
-        except (error_perm, error_temp, error_reply, OSError, EOFError, Exception):
-            # Permission denied, directory exists, or connection issues
+        except (error_perm, error_temp, error_reply, OSError, EOFError):
             return False

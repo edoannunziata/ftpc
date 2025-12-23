@@ -1,6 +1,7 @@
 """Tests for FtpClient class."""
 
 import unittest
+from ftplib import error_perm
 from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path, PurePath
 from datetime import datetime
@@ -213,8 +214,8 @@ class TestFtpClient(unittest.TestCase):
         mock_ftp = Mock()
         mock_ftp_class.return_value = mock_ftp
         
-        # Mock delete to raise an exception
-        mock_ftp.delete.side_effect = Exception("Delete failed")
+        # Mock delete to raise an FTP error
+        mock_ftp.delete.side_effect = error_perm("550 Delete failed")
         
         with self.client as client:
             result = client.unlink(PurePath("/remote/file.txt"))
@@ -304,8 +305,8 @@ class TestFtpClient(unittest.TestCase):
         mock_ftp = Mock()
         mock_ftp_class.return_value = mock_ftp
 
-        # Mock mkd to raise an exception
-        mock_ftp.mkd.side_effect = Exception("Directory creation failed")
+        # Mock mkd to raise an FTP error
+        mock_ftp.mkd.side_effect = error_perm("550 Directory creation failed")
 
         with self.client as client:
             result = client.mkdir(PurePath("/remote/new_directory"))

@@ -16,6 +16,7 @@ from ftpc.config.remotes import (
     AzureConfig,
     SftpConfig,
     BlobConfig,
+    LocalConfig,
 )
 
 try:
@@ -52,85 +53,79 @@ class Exit(Exception):
 
 
 def create_client(remote_config: BaseRemoteConfig, remote_name: str) -> Client:
-    """Create a client based on remote configuration type."""
-    match remote_config.type:
-        case "ftp":
-            assert isinstance(remote_config, FtpConfig)
+    match remote_config:
+        case FtpConfig() as c:
             return FtpClient(
-                remote_config.url,
-                tls=remote_config.tls,
-                username=remote_config.username,
-                password=remote_config.password,
-                name=remote_config.name,
-                proxy_config=remote_config.proxy,
+                c.url,
+                tls=c.tls,
+                username=c.username,
+                password=c.password,
+                name=c.name,
+                proxy_config=c.proxy,
             )
-        case "local":
+        case LocalConfig():
             return LocalClient()
-        case "azure":
+        case AzureConfig() as c:
             if not AZURE_AVAILABLE:
                 raise Exit(
                     "fatal error: Azure support requires additional dependencies.\n"
                     "Install with: pip install azure-storage-file-datalake azure-identity"
                 )
 
-            assert isinstance(remote_config, AzureConfig)
             return AzureClient(
-                remote_config.url,
-                filesystem_name=remote_config.filesystem,
-                connection_string=remote_config.connection_string,
-                account_key=remote_config.account_key,
-                name=remote_config.name,
-                proxy_config=remote_config.proxy,
+                c.url,
+                filesystem_name=c.filesystem,
+                connection_string=c.connection_string,
+                account_key=c.account_key,
+                name=c.name,
+                proxy_config=c.proxy,
             )
-        case "s3":
+        case S3Config() as c:
             if not S3_AVAILABLE:
                 raise Exit(
                     "fatal error: S3 support requires additional dependencies.\n"
                     "Install with: pip install boto3"
                 )
 
-            assert isinstance(remote_config, S3Config)
             return S3Client(
-                bucket_name=remote_config.get_bucket_name(),
-                endpoint_url=remote_config.endpoint_url,
-                aws_access_key_id=remote_config.aws_access_key_id,
-                aws_secret_access_key=remote_config.aws_secret_access_key,
-                region_name=remote_config.region_name,
-                name=remote_config.name,
-                proxy_config=remote_config.proxy,
+                bucket_name=c.get_bucket_name(),
+                endpoint_url=c.endpoint_url,
+                aws_access_key_id=c.aws_access_key_id,
+                aws_secret_access_key=c.aws_secret_access_key,
+                region_name=c.region_name,
+                name=c.name,
+                proxy_config=c.proxy,
             )
-        case "sftp":
+        case SftpConfig() as c:
             if not SFTP_AVAILABLE:
                 raise Exit(
                     "fatal error: SFTP support requires additional dependencies.\n"
                     "Install with: pip install paramiko"
                 )
 
-            assert isinstance(remote_config, SftpConfig)
             return SftpClient(
-                remote_config.url,
-                port=remote_config.port,
-                username=remote_config.username,
-                password=remote_config.password,
-                key_filename=remote_config.key_filename,
-                name=remote_config.name,
-                proxy_config=remote_config.proxy,
+                c.url,
+                port=c.port,
+                username=c.username,
+                password=c.password,
+                key_filename=c.key_filename,
+                name=c.name,
+                proxy_config=c.proxy,
             )
-        case "blob":
+        case BlobConfig() as c:
             if not BLOB_AVAILABLE:
                 raise Exit(
                     "fatal error: Azure Blob support requires additional dependencies.\n"
                     "Install with: pip install azure-storage-blob azure-identity"
                 )
 
-            assert isinstance(remote_config, BlobConfig)
             return AzureBlobClient(
-                remote_config.url,
-                container_name=remote_config.container,
-                connection_string=remote_config.connection_string,
-                account_key=remote_config.account_key,
-                name=remote_config.name,
-                proxy_config=remote_config.proxy,
+                c.url,
+                container_name=c.container,
+                connection_string=c.connection_string,
+                account_key=c.account_key,
+                name=c.name,
+                proxy_config=c.proxy,
             )
         case _:
             raise Exit(
