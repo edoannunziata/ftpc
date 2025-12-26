@@ -57,6 +57,7 @@ def create_client(remote_config: BaseRemoteConfig, remote_name: str) -> Client:
         case FtpConfig() as c:
             return FtpClient(
                 c.url,
+                port=c.port,
                 tls=c.tls,
                 username=c.username,
                 password=c.password,

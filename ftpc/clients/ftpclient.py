@@ -158,6 +158,7 @@ class FtpClient(Client):
         self,
         url: str,
         *,
+        port: int = 21,
         tls: bool = True,
         username: str = "",
         password: str = "",
@@ -165,6 +166,7 @@ class FtpClient(Client):
         proxy_config: Optional["ProxyConfig"] = None,
     ) -> None:
         self.url = url
+        self.port = port
         self.tls = tls
         self.username = username
         self.password = password
@@ -181,6 +183,7 @@ class FtpClient(Client):
 
         try:
             self.ftp_client = self._create_client()
+            self.ftp_client.connect(self.url, self.port)
             self._login()
         except error_perm as e:
             error_str = str(e)
@@ -194,17 +197,19 @@ class FtpClient(Client):
         return self
 
     def _create_client(self) -> Union[FTP, FTP_TLS, Socks5FTP, Socks5FTP_TLS]:
-        """Create appropriate FTP client based on TLS and proxy settings."""
+        """Create appropriate FTP client based on TLS and proxy settings.
+
+        Note: Does not connect to the server. Call connect() separately.
+        """
         if self.proxy_config:
             cls = Socks5FTP_TLS if self.tls else Socks5FTP
             return cls(
-                self.url,
                 proxy_host=self.proxy_config.host,
                 proxy_port=self.proxy_config.port,
                 proxy_username=self.proxy_config.username,
                 proxy_password=self.proxy_config.password,
             )
-        return FTP_TLS(self.url) if self.tls else FTP(self.url)
+        return FTP_TLS() if self.tls else FTP()
 
     def _login(self) -> None:
         """Authenticate and enable TLS protection if applicable."""

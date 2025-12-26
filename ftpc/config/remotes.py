@@ -47,6 +47,7 @@ class LocalConfig(BaseRemoteConfig):
 @dataclass
 class FtpConfig(BaseRemoteConfig):
     url: str
+    port: int = 21
     username: str = "anonymous"
     password: str = "anonymous@"
     tls: bool = False
@@ -65,6 +66,7 @@ class FtpConfig(BaseRemoteConfig):
             name=name,
             type="ftp",
             url=data["url"],
+            port=data.get("port", 21),
             username=data.get("username", "anonymous"),
             password=data.get("password", "anonymous@"),
             tls=data.get("tls", False),
@@ -77,6 +79,9 @@ class FtpConfig(BaseRemoteConfig):
 
         if not self.url:
             raise ValidationError("FTP URL cannot be empty")
+
+        if not isinstance(self.port, int) or self.port < 1 or self.port > 65535:
+            raise ValidationError("FTP port must be an integer between 1 and 65535")
 
         if not isinstance(self.tls, bool):
             raise ValidationError("TLS setting must be a boolean")
