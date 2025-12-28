@@ -25,12 +25,14 @@ from ftpc.storage import (
     StorageBuilder,
     SyncStorageSession,
     AsyncStorageSession,
-    StorageError,
-    ConnectionError,
-    UnsupportedProtocolError,
-    MissingDependencyError,
     connect,
     connect_sync,
+)
+from ftpc.exceptions import (
+    StorageError,
+    StorageConnectionError,
+    UnsupportedProtocolError,
+    MissingDependencyError,
 )
 
 __all__ = [
@@ -42,7 +44,7 @@ __all__ = [
     "AsyncStorageSession",
     # Exceptions
     "StorageError",
-    "ConnectionError",
+    "StorageConnectionError",
     "UnsupportedProtocolError",
     "MissingDependencyError",
     # Convenience functions

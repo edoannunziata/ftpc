@@ -29,7 +29,7 @@ class ClientError(FtpcError):
     """Base exception for client operation errors."""
 
 
-class ConnectionError(ClientError):
+class ClientConnectionError(ClientError):
     """Failed to connect to remote server."""
 
 
@@ -69,3 +69,22 @@ class TuiError(FtpcError):
 
 class ResizeError(TuiError):
     """Terminal resize operation failed."""
+
+
+# Storage Exceptions
+
+
+class StorageError(FtpcError):
+    """Base exception for storage operations."""
+
+
+class StorageConnectionError(StorageError):
+    """Raised when connection to storage backend fails."""
+
+
+class UnsupportedProtocolError(StorageError):
+    """Raised when an unsupported protocol is specified."""
+
+
+class MissingDependencyError(StorageError):
+    """Raised when required dependencies are not installed."""

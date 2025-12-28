@@ -25,7 +25,6 @@ Example usage:
 
 from __future__ import annotations
 
-import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
@@ -44,10 +43,10 @@ from typing_extensions import Self
 from urllib.parse import urlparse, unquote
 
 from ftpc.clients.client import Client
-from ftpc.clients.async_client import AsyncClient
 from ftpc.clients.async_wrapper import AsyncClientWrapper
 from ftpc.clients.localclient import LocalClient
 from ftpc.clients.ftpclient import FtpClient
+from ftpc.exceptions import MissingDependencyError, UnsupportedProtocolError
 from ftpc.filedescriptor import FileDescriptor
 
 if TYPE_CHECKING:
@@ -57,52 +56,37 @@ if TYPE_CHECKING:
 # Optional dependency flags
 try:
     from ftpc.clients.s3client import S3Client
+
     _S3_AVAILABLE = True
 except ImportError:
     _S3_AVAILABLE = False
 
 try:
     from ftpc.clients.sftpclient import SftpClient
+
     _SFTP_AVAILABLE = True
 except ImportError:
     _SFTP_AVAILABLE = False
 
 try:
     from ftpc.clients.azureclient import AzureClient
+
     _AZURE_AVAILABLE = True
 except ImportError:
     _AZURE_AVAILABLE = False
 
 try:
     from ftpc.clients.azureblobclient import AzureBlobClient
+
     _BLOB_AVAILABLE = True
 except ImportError:
     _BLOB_AVAILABLE = False
 
 
-class StorageError(Exception):
-    """Base exception for storage operations."""
-    pass
-
-
-class ConnectionError(StorageError):
-    """Raised when connection to storage backend fails."""
-    pass
-
-
-class UnsupportedProtocolError(StorageError):
-    """Raised when an unsupported protocol is specified."""
-    pass
-
-
-class MissingDependencyError(StorageError):
-    """Raised when required dependencies are not installed."""
-    pass
-
-
 @dataclass
 class ParsedURL:
     """Parsed components of a storage URL."""
+
     protocol: str
     host: str
     port: Optional[int]
@@ -170,25 +154,31 @@ def _create_client_from_url(url: str) -> tuple[Client, str]:
         return LocalClient(), parsed.path
 
     elif parsed.protocol in ("ftp", "ftps"):
-        return FtpClient(
-            url=parsed.host,
-            port=parsed.port or 21,
-            tls=(parsed.protocol == "ftps"),
-            username=parsed.username or "anonymous",
-            password=parsed.password or "anonymous@",
-        ), parsed.path
+        return (
+            FtpClient(
+                url=parsed.host,
+                port=parsed.port or 21,
+                tls=(parsed.protocol == "ftps"),
+                username=parsed.username or "anonymous",
+                password=parsed.password or "anonymous@",
+            ),
+            parsed.path,
+        )
 
     elif parsed.protocol == "sftp":
         if not _SFTP_AVAILABLE:
             raise MissingDependencyError(
                 "SFTP support requires paramiko. Install with: pip install paramiko"
             )
-        return SftpClient(
-            host=parsed.host,
-            port=parsed.port or 22,
-            username=parsed.username,
-            password=parsed.password,
-        ), parsed.path
+        return (
+            SftpClient(
+                host=parsed.host,
+                port=parsed.port or 22,
+                username=parsed.username,
+                password=parsed.password,
+            ),
+            parsed.path,
+        )
 
     elif parsed.protocol == "s3":
         if not _S3_AVAILABLE:
@@ -211,10 +201,13 @@ def _create_client_from_url(url: str) -> tuple[Client, str]:
         filesystem = path_parts[0] if path_parts else ""
         remaining_path = "/" + path_parts[1] if len(path_parts) > 1 else "/"
 
-        return AzureClient(
-            account_url=account_url,
-            filesystem_name=filesystem,
-        ), remaining_path
+        return (
+            AzureClient(
+                account_url=account_url,
+                filesystem_name=filesystem,
+            ),
+            remaining_path,
+        )
 
     elif parsed.protocol == "blob":
         if not _BLOB_AVAILABLE:
@@ -228,10 +221,13 @@ def _create_client_from_url(url: str) -> tuple[Client, str]:
         container = path_parts[0] if path_parts else ""
         remaining_path = "/" + path_parts[1] if len(path_parts) > 1 else "/"
 
-        return AzureBlobClient(
-            account_url=account_url,
-            container_name=container,
-        ), remaining_path
+        return (
+            AzureBlobClient(
+                account_url=account_url,
+                container_name=container,
+            ),
+            remaining_path,
+        )
 
     else:
         raise UnsupportedProtocolError(
@@ -397,7 +393,9 @@ class AsyncStorageSession:
             return self._async_client.name()
         return self._sync_client.name()
 
-    async def list(self, path: Union[str, PurePath, None] = None) -> List[FileDescriptor]:
+    async def list(
+        self, path: Union[str, PurePath, None] = None
+    ) -> List[FileDescriptor]:
         """List files and directories at the given path.
 
         Args:
@@ -579,7 +577,7 @@ class Storage:
         Raises:
             UnsupportedProtocolError: If the URL protocol is not supported
             MissingDependencyError: If required dependencies are not installed
-            ConnectionError: If connection fails
+            StorageConnectionError: If connection fails
         """
         client, base_path = _create_client_from_url(url)
         session = AsyncStorageSession(client, base_path)
@@ -600,7 +598,7 @@ class Storage:
         Raises:
             UnsupportedProtocolError: If the URL protocol is not supported
             MissingDependencyError: If required dependencies are not installed
-            ConnectionError: If connection fails
+            StorageConnectionError: If connection fails
         """
         client, base_path = _create_client_from_url(url)
         session = SyncStorageSession(client, base_path)

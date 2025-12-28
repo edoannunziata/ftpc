@@ -71,34 +71,71 @@ class TestFtpClient(unittest.TestCase):
         self.assertEqual(self.client.name(), "test_ftp")
     
     @patch('ftpc.clients.ftpclient.FTP')
-    def test_ls_operation(self, mock_ftp_class):
-        """Test listing directory contents."""
+    def test_ls_mlsd(self, mock_ftp_class):
+        """Test listing directory contents using MLSD."""
         mock_ftp = Mock()
         mock_ftp_class.return_value = mock_ftp
-        
-        # Mock FTP DIR response (detailed listing)
-        def mock_dir(callback):
-            lines = [
-                "-rw-r--r--    1 user  group        1024 Jan 15 10:30 file1.txt",
-                "-rw-r--r--    1 user  group        2048 Jan 16 14:00 file2.txt", 
-                "drwxr-xr-x    2 user  group           0 Jan 14 09:15 directory1"
-            ]
-            for line in lines:
-                callback(line)
-        
-        mock_ftp.dir.side_effect = mock_dir
-        
+
+        # Mock MLSD response
+        mock_ftp.mlsd.return_value = [
+            ("file1.txt", {"type": "file", "size": "1024", "modify": "20240115103000"}),
+            ("file2.txt", {"type": "file", "size": "2048", "modify": "20240116140000"}),
+            ("directory1", {"type": "dir", "modify": "20240114091500"}),
+            (".", {"type": "cdir"}),  # Should be skipped
+            ("..", {"type": "pdir"}),  # Should be skipped
+        ]
+
         with self.client as client:
             result = client.ls(PurePath("/test/path"))
-        
+
+        # Should have 3 entries (cdir and pdir are skipped)
         self.assertEqual(len(result), 3)
-        
+
         # Check file1.txt
         file1 = next((f for f in result if f.name == "file1.txt"), None)
         self.assertIsNotNone(file1)
         self.assertEqual(file1.filetype, FileType.FILE)
         self.assertEqual(file1.size, 1024)
-        
+        self.assertEqual(file1.modified_time, datetime(2024, 1, 15, 10, 30, 0))
+
+        # Check directory1
+        dir1 = next((f for f in result if f.name == "directory1"), None)
+        self.assertIsNotNone(dir1)
+        self.assertEqual(dir1.filetype, FileType.DIRECTORY)
+        self.assertIsNone(dir1.size)  # Directories may not have size
+
+    @patch('ftpc.clients.ftpclient.FTP')
+    def test_ls_operation(self, mock_ftp_class):
+        """Test listing directory contents with LIST fallback."""
+        mock_ftp = Mock()
+        mock_ftp_class.return_value = mock_ftp
+
+        # Mock MLSD to fail (not supported)
+        mock_ftp.mlsd.side_effect = error_perm("500 Unknown command")
+
+        # Mock FTP DIR response (detailed listing)
+        def mock_dir(callback):
+            lines = [
+                "-rw-r--r--    1 user  group        1024 Jan 15 10:30 file1.txt",
+                "-rw-r--r--    1 user  group        2048 Jan 16 14:00 file2.txt",
+                "drwxr-xr-x    2 user  group           0 Jan 14 09:15 directory1"
+            ]
+            for line in lines:
+                callback(line)
+
+        mock_ftp.dir.side_effect = mock_dir
+
+        with self.client as client:
+            result = client.ls(PurePath("/test/path"))
+
+        self.assertEqual(len(result), 3)
+
+        # Check file1.txt
+        file1 = next((f for f in result if f.name == "file1.txt"), None)
+        self.assertIsNotNone(file1)
+        self.assertEqual(file1.filetype, FileType.FILE)
+        self.assertEqual(file1.size, 1024)
+
         # Check directory1
         dir1 = next((f for f in result if f.name == "directory1"), None)
         self.assertIsNotNone(dir1)
@@ -110,26 +147,29 @@ class TestFtpClient(unittest.TestCase):
         """Test ls falling back to NLST when DIR fails."""
         mock_ftp = Mock()
         mock_ftp_class.return_value = mock_ftp
-        
+
+        # Mock MLSD to fail (not supported)
+        mock_ftp.mlsd.side_effect = error_perm("500 Unknown command")
+
         # Mock DIR to return no results (empty detailed listing)
         def mock_dir(callback):
             pass  # No lines returned
-        
+
         mock_ftp.dir.side_effect = mock_dir
-        
+
         # Mock NLST response
         mock_ftp.nlst.return_value = ["file1.txt", "file2.txt"]
-        
+
         # Mock _is_directory to return False for files
         def mock_is_directory(name):
             return False
-        
+
         with self.client as client:
             client._is_directory = mock_is_directory
             result = client.ls(PurePath("/test/path"))
-        
+
         self.assertEqual(len(result), 2)
-        
+
         # When falling back to NLST, we use _is_directory to determine type
         for item in result:
             self.assertEqual(item.filetype, FileType.FILE)

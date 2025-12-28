@@ -10,7 +10,7 @@ import socket
 from ftpc.clients.client import Client
 from ftpc.filedescriptor import FileDescriptor, FileType
 from ftpc.exceptions import (
-    ConnectionError,
+    ClientConnectionError,
     AuthenticationError,
     ListingError,
 )
@@ -189,11 +189,11 @@ class FtpClient(Client):
             error_str = str(e)
             if "530" in error_str:
                 raise AuthenticationError(f"Authentication failed: {error_str}")
-            raise ConnectionError(f"FTP error: {error_str}")
+            raise ClientConnectionError(f"FTP error: {error_str}")
         except (socket.gaierror, socket.timeout, OSError) as e:
-            raise ConnectionError(f"Failed to connect to {self.url}: {e}")
+            raise ClientConnectionError(f"Failed to connect to {self.url}: {e}")
         except (error_temp, error_reply) as e:
-            raise ConnectionError(f"FTP error: {e}")
+            raise ClientConnectionError(f"FTP error: {e}")
         return self
 
     def _create_client(self) -> Union[FTP, FTP_TLS, Socks5FTP, Socks5FTP_TLS]:
@@ -237,8 +237,23 @@ class FtpClient(Client):
         return self._name
 
     def ls(self, path: PurePath) -> List[FileDescriptor]:
+        """List directory contents, trying MLSD first with LIST fallback."""
         assert self.ftp_client is not None, "Client not connected"
-        result = []
+
+        try:
+            # Try MLSD first (RFC 3659 standardized format)
+            return self._ls_mlsd(path)
+        except error_perm:
+            # MLSD not supported, fall back to LIST parsing
+            return self._ls_list(path)
+
+    def _ls_list(self, path: PurePath) -> List[FileDescriptor]:
+        """List directory contents using LIST command with regex parsing.
+
+        This is a fallback for servers that don't support MLSD.
+        """
+        assert self.ftp_client is not None, "Client not connected"
+        result: List[FileDescriptor] = []
 
         try:
             # Get detailed directory listing
@@ -300,6 +315,65 @@ class FtpClient(Client):
                 # Best effort to restore directory - if it fails, we can't do much
                 pass
 
+    def _ls_mlsd(self, path: PurePath) -> List[FileDescriptor]:
+        """List directory contents using MLSD command (RFC 3659).
+
+        MLSD provides a standardized, machine-readable format that is more
+        reliable than parsing LIST output.
+
+        Args:
+            path: Directory path to list
+
+        Returns:
+            List of FileDescriptor objects
+
+        Raises:
+            error_perm: If MLSD is not supported by the server
+        """
+        assert self.ftp_client is not None, "Client not connected"
+        result: List[FileDescriptor] = []
+
+        for name, facts in self.ftp_client.mlsd(path.as_posix()):
+            # Skip current and parent directory entries
+            file_type_str = facts.get("type", "").lower()
+            if file_type_str in ("cdir", "pdir"):
+                continue
+
+            # Determine file type
+            if file_type_str == "dir":
+                file_type = FileType.DIRECTORY
+            else:
+                file_type = FileType.FILE
+
+            # Parse size
+            size: Optional[int] = None
+            if "size" in facts:
+                try:
+                    size = int(facts["size"])
+                except ValueError:
+                    pass
+
+            # Parse modification time (YYYYMMDDHHMMSS format, UTC)
+            modified_time: Optional[datetime] = None
+            if "modify" in facts:
+                try:
+                    # MLSD modify format: YYYYMMDDHHMMSS or YYYYMMDDHHMMSS.sss
+                    modify_str = facts["modify"].split(".")[0]
+                    modified_time = datetime.strptime(modify_str, "%Y%m%d%H%M%S")
+                except ValueError:
+                    pass
+
+            result.append(
+                FileDescriptor(
+                    path=PurePosixPath(name),
+                    filetype=file_type,
+                    size=size,
+                    modified_time=modified_time,
+                )
+            )
+
+        return result
+
     def _parse_list_line(self, line: str) -> FileDescriptor | None:
         # Try Unix style first
         unix_match = self._UNIX_PATTERN.match(line)
@@ -316,10 +390,11 @@ class FtpClient(Client):
                 modified_time = datetime.strptime(date_str, "%b %d %Y")
             except ValueError:
                 try:
-                    modified_time = datetime.strptime(date_str, "%b %d %H:%M")
-                    # Add current year since it's not in the string
+                    # Add current year to avoid Python 3.15 deprecation warning
                     current_year = datetime.now().year
-                    modified_time = modified_time.replace(year=current_year)
+                    modified_time = datetime.strptime(
+                        f"{current_year} {date_str}", "%Y %b %d %H:%M"
+                    )
                 except ValueError:
                     modified_time = None
 

@@ -25,7 +25,7 @@ from ftpc.tui.dialog import (
     ProgressDialog,
 )
 from ftpc.exceptions import (
-    ConnectionError,
+    ClientConnectionError,
     AuthenticationError,
     ListingError,
     ClientError,
@@ -688,5 +688,5 @@ class Tui:
                     except Exception:
                         pass
 
-        except (ConnectionError, AuthenticationError, ClientError) as e:
+        except (ClientConnectionError, AuthenticationError, ClientError) as e:
             self._show_connection_error(stdscr, str(e))
