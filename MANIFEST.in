@@ -1,0 +1,14 @@
+# Include documentation and license
+include README.md
+include LICENSE
+
+# Include configuration files
+include pyproject.toml
+
+# Exclude test files and other development files
+exclude .gitignore
+recursive-exclude tests *
+recursive-exclude skills *
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .DS_Store

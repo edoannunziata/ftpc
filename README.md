@@ -27,13 +27,34 @@ Purity is _not_ a goal.
 
 ## Installation
 
-### Basic Installation
+### From PyPI (Recommended)
+
 ```bash
-pip install -e .
+# Basic installation
+pip install ftpc
+
+# Full installation with all backend support
+pip install ftpc[all]
+
+# Install with specific backends
+pip install ftpc[s3]        # AWS S3 support
+pip install ftpc[azure]     # Azure Data Lake support
+pip install ftpc[blob]      # Azure Blob Storage support
+pip install ftpc[sftp]      # SFTP support
+pip install ftpc[s3,azure]  # Multiple backends
 ```
 
-### Full Installation (all backends)
+### From Source
+
 ```bash
+# Clone the repository
+git clone https://github.com/edoannunziata/ftpc.git
+cd ftpc
+
+# Basic installation
+pip install -e .
+
+# Full installation (all backends)
 pip install -e ".[all]"
 ```
 
