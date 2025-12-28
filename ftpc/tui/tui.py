@@ -495,6 +495,28 @@ class Tui:
             self.status_message = f"Error uploading {file_desc.name}: {str(e)}"
             return False
 
+    def _show_connecting_status(self, stdscr: Any, client_name: str) -> None:
+        """Display a connecting status message."""
+        curses.curs_set(0)
+        stdscr.clear()
+
+        curses.start_color()
+        curses.use_default_colors()
+        curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLUE)
+
+        height, width = stdscr.getmaxyx()
+        message = f"Connecting to {client_name}..."
+
+        y = height // 2
+        x = max(0, (width - len(message)) // 2)
+
+        try:
+            stdscr.addstr(y, x, message[:width - 1], curses.color_pair(1) | curses.A_BOLD)
+        except curses.error:
+            pass
+
+        stdscr.refresh()
+
     def _show_connection_error(self, stdscr: Any, error_message: str) -> None:
         """Display a connection error screen and wait for user to quit."""
         curses.curs_set(0)
@@ -578,6 +600,7 @@ class Tui:
                 self.async_runner = runner
 
                 # Enter async client context
+                self._show_connecting_status(stdscr, self.client.name())
                 future = runner.run(self.client.__aenter__())
                 try:
                     future.result(timeout=30)

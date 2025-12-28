@@ -65,19 +65,23 @@ class AzureClient(Client):
         # Create service client based on provided auth method
         if self.connection_string:
             self.service_client = DataLakeServiceClient.from_connection_string(
-                conn_str=self.connection_string, proxies=proxies
+                conn_str=self.connection_string,
+                proxies=proxies,
+                connection_timeout=5,
             )
         elif self.account_key:
             self.service_client = DataLakeServiceClient(
                 account_url=self.account_url,
                 credential=self.account_key,
                 proxies=proxies,
+                connection_timeout=5,
             )
         else:
             self.service_client = DataLakeServiceClient(
                 account_url=self.account_url,
                 credential=self._credential,
                 proxies=proxies,
+                connection_timeout=5,
             )
 
         # Get filesystem (container) client

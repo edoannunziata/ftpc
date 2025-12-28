@@ -183,7 +183,7 @@ class FtpClient(Client):
 
         try:
             self.ftp_client = self._create_client()
-            self.ftp_client.connect(self.url, self.port)
+            self.ftp_client.connect(self.url, self.port, timeout=5)
             self._login()
         except error_perm as e:
             error_str = str(e)

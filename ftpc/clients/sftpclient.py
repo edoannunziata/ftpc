@@ -71,7 +71,7 @@ class SftpClient(Client):
             connect_kwargs = {
                 "hostname": self.host,
                 "port": self.port,
-                "timeout": 10,
+                "timeout": 5,
             }
 
             # Create SOCKS5 proxy socket if configured

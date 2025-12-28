@@ -62,7 +62,9 @@ class S3Client(Client):
         )
 
         # Build config with optional proxy and signature settings
-        config_kwargs = {}
+        config_kwargs: dict[str, Any] = {
+            "connect_timeout": 5,
+        }
 
         if self.proxy_config:
             proxy_url = self._build_proxy_url()
@@ -72,7 +74,7 @@ class S3Client(Client):
         if not self.aws_access_key_id and not self.aws_secret_access_key:
             config_kwargs["signature_version"] = UNSIGNED
 
-        config = Config(**config_kwargs) if config_kwargs else None
+        config = Config(**config_kwargs)
 
         self.s3_client = session.client(
             "s3", endpoint_url=self.endpoint_url, config=config
