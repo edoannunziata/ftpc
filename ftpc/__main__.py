@@ -5,6 +5,7 @@ from pathlib import PurePath
 from typing import IO, Optional
 
 from ftpc.clients.client import Client
+from ftpc.clients.async_wrapper import AsyncClientWrapper
 from ftpc.clients.ftpclient import FtpClient
 from ftpc.clients.localclient import LocalClient
 from ftpc.tui import Tui, RemoteSelector
@@ -155,9 +156,10 @@ def run_tui_loop(config: Config, initial_remote: str | None, initial_path: str) 
         except RemoteNotFoundError as e:
             raise Exit(str(e))
 
-        client = create_client(remote_config, remote_name)
+        sync_client = create_client(remote_config, remote_name)
+        async_client = AsyncClientWrapper(sync_client)
 
-        tui = Tui(client, cwd=PurePath(path))
+        tui = Tui(async_client, cwd=PurePath(path))
         tui.start()
 
         # Reset for next iteration - show selector
