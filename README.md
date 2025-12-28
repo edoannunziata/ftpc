@@ -188,3 +188,96 @@ python -m ftpc --config ./my-config.toml azure /documents
 | /             | Search for files                    |
 | ?             | Show help dialog                    |
 | q             | Quit application                    |
+
+## Library Usage
+
+ftpc can be used as a library for programmatic access to storage backends via the `Storage` facade.
+
+### Quick Start
+
+```python
+from ftpc import Storage
+
+# Async usage with URL
+async with Storage.connect("s3://my-bucket") as store:
+    files = await store.list()
+    await store.download("remote/file.txt", "local.txt")
+    await store.upload("local.txt", "remote/backup.txt")
+
+# Sync usage with URL
+with Storage.connect_sync("sftp://user:pass@host.com/home") as store:
+    files = store.list()
+    store.upload("data.csv", "backup.csv")
+```
+
+### Supported URL Formats
+
+| Protocol | Format | Example |
+|----------|--------|---------|
+| Local | `file:///path` or `/path` | `/home/user/data` |
+| FTP | `ftp://[user:pass@]host[:port]/path` | `ftp://ftp.example.com/pub` |
+| FTPS | `ftps://[user:pass@]host[:port]/path` | `ftps://user:pass@secure.example.com` |
+| SFTP | `sftp://[user:pass@]host[:port]/path` | `sftp://user@host.com/home/user` |
+| S3 | `s3://bucket/path` | `s3://my-bucket/data` |
+| Azure Data Lake | `azure://account.dfs.core.windows.net/filesystem/path` | `azure://myaccount.dfs.core.windows.net/myfs` |
+| Azure Blob | `blob://account.blob.core.windows.net/container/path` | `blob://myaccount.blob.core.windows.net/mycontainer` |
+
+### Named Constructors
+
+For more control over connection parameters, use named constructors:
+
+```python
+from ftpc import Storage
+
+# S3 with explicit configuration
+async with Storage.s3(
+    bucket="my-bucket",
+    region="us-east-1",
+    access_key_id="...",
+    secret_access_key="..."
+) as store:
+    await store.list()
+
+# FTP with TLS
+with Storage.ftp(
+    host="ftp.example.com",
+    username="user",
+    password="pass",
+    tls=True
+).sync() as store:
+    store.list()
+
+# SFTP with key authentication
+with Storage.sftp(
+    host="server.example.com",
+    username="user",
+    key_filename="/path/to/key"
+).sync() as store:
+    store.list()
+
+# Azure Data Lake
+async with Storage.azure(
+    account_url="https://myaccount.dfs.core.windows.net",
+    filesystem="myfilesystem",
+    account_key="..."
+) as store:
+    await store.list()
+
+# Local filesystem
+with Storage.local("/home/user/data").sync() as store:
+    files = store.list()
+```
+
+### Available Operations
+
+All storage sessions provide these methods:
+
+| Method | Description |
+|--------|-------------|
+| `list(path=None)` | List files/directories (defaults to base path) |
+| `download(remote, local, progress=None)` | Download a file |
+| `upload(local, remote, progress=None)` | Upload a file |
+| `delete(path)` | Delete a file |
+| `mkdir(path)` | Create a directory |
+
+The `progress` callback receives bytes transferred and returns `False` to cancel.
