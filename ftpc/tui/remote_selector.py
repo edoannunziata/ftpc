@@ -61,7 +61,7 @@ class RemoteSelector:
             file_color=curses.color_pair(4),
             neutral_color=curses.color_pair(7),
             top_text="Select Remote",
-            bottom_text="Press ? for help, i for details, o to set path"
+            bottom_text="Press ? for help, i for details, o to open with path"
         )
 
         self.lswindow.elements = self.remote_descriptors  # type: ignore[assignment]
@@ -86,7 +86,7 @@ class RemoteSelector:
             "Actions:",
             "  ENTER, l   - Connect to selected remote",
             "  i          - Show remote details",
-            "  o          - Set custom starting path",
+            "  o          - Open with custom path",
             "",
             "Other:",
             "  ?          - Show this help",
@@ -130,18 +130,20 @@ class RemoteSelector:
         )
         self._redraw()
 
-    def _set_path(self) -> None:
-        """Show dialog to set custom starting path."""
+    def _open_with_path(self) -> Optional[tuple[str, str]]:
+        """Show dialog to set path and immediately connect."""
         assert self.lswindow is not None, "LsWindow not initialized"
         path = show_input_dialog(
             self.stdscr,
-            title="Starting Path",
+            title="Open with Path",
             prompt=f"Current: {self.selected_path}"
         )
         if path:
-            self.selected_path = path
-            self.lswindow.bottom_text = f"Path: {self.selected_path} | ? help, i details"
+            selected = self.lswindow.get_selected()
+            if selected and isinstance(selected, RemoteDisplayDescriptor):
+                return (selected.remote_name, path)
         self._redraw()
+        return None
 
     def _search(self) -> None:
         """Search for a remote by name prefix."""
@@ -210,7 +212,8 @@ class RemoteSelector:
                     ):
                         self._show_details(selected)
                 case "o":
-                    self._set_path()
+                    if result := self._open_with_path():
+                        return result
                 case "/":
                     self._search()
                 case "?":

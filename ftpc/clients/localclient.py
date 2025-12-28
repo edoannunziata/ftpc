@@ -27,15 +27,29 @@ class LocalClient(Client):
         result = []
 
         try:
-            for entry_name in os.listdir(path):
-                entry_path = Path(path) / entry_name
-                pure_path = PurePath(entry_name)
+            entries = os.listdir(path)
+        except (PermissionError, FileNotFoundError) as e:
+            raise ListingError(f"Failed to list directory '{path}': {e}")
+
+        for entry_name in entries:
+            entry_path = Path(path) / entry_name
+            pure_path = PurePath(entry_name)
+
+            try:
+                # Get file stats - use lstat to handle broken symlinks
+                stat_info = entry_path.lstat()
 
                 # Determine file type
-                file_type = FileType.DIRECTORY if entry_path.is_dir() else FileType.FILE
-
-                # Get file stats
-                stat_info = entry_path.stat()
+                if entry_path.is_symlink():
+                    # Check if symlink target exists
+                    try:
+                        entry_path.stat()
+                        file_type = FileType.DIRECTORY if entry_path.is_dir() else FileType.FILE
+                    except (FileNotFoundError, OSError):
+                        # Broken symlink - treat as file
+                        file_type = FileType.FILE
+                else:
+                    file_type = FileType.DIRECTORY if entry_path.is_dir() else FileType.FILE
 
                 # Create FileDescriptor with available metadata
                 fd = FileDescriptor(
@@ -46,9 +60,9 @@ class LocalClient(Client):
                 )
 
                 result.append(fd)
-
-        except (PermissionError, FileNotFoundError) as e:
-            raise ListingError(f"Failed to list directory '{path}': {e}")
+            except (PermissionError, FileNotFoundError, OSError):
+                # Skip files that disappear or are inaccessible
+                continue
 
         return result
 

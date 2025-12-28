@@ -102,6 +102,7 @@ class SftpClient(Client):
                 connect_kwargs["key_filename"] = self.key_filename
             else:
                 connect_kwargs["look_for_keys"] = False
+                connect_kwargs["allow_agent"] = False
 
             self.ssh_client.connect(**connect_kwargs)
 
