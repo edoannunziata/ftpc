@@ -98,7 +98,7 @@ where = ["."]
 include = ["ftpc*"]
 
 [tool.setuptools.package-data]
-ftpc = ["py.typed"]
+ftpc = ["py.typed", "sample_config.toml"]
 
 [tool.mypy]
 python_version = "3.11"

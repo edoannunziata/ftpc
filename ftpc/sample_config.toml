@@ -1,0 +1,61 @@
+# ftpc configuration file
+# See https://github.com/edoannunziata/ftpc for documentation
+
+# Local filesystem browser
+[local]
+type = "local"
+
+# Example FTP configuration:
+# [my-ftp-server]
+# type = "ftp"
+# url = "ftp.example.com"
+# port = 21
+# username = "user"
+# password = "password"
+# tls = true
+
+# Example SFTP configuration:
+# [my-sftp-server]
+# type = "sftp"
+# url = "sftp.example.com"
+# port = 22
+# username = "user"
+# password = "password"
+# key_filename = "~/.ssh/id_rsa"
+
+# Example S3 configuration:
+# [my-s3-bucket]
+# type = "s3"
+# bucket_name = "my-bucket"
+# region_name = "us-east-1"
+# endpoint_url = "https://s3.amazonaws.com"
+# aws_access_key_id = "AKIAIOSFODNN7EXAMPLE"
+# aws_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+# Example Azure Data Lake Storage Gen2 configuration:
+# [my-azure-datalake]
+# type = "azure"
+# url = "mystorageaccount.dfs.core.windows.net"
+# filesystem = "myfilesystem"
+# connection_string = "DefaultEndpointsProtocol=https;AccountName=..."
+# account_key = "your-account-key"
+
+# Example Azure Blob Storage configuration:
+# [my-azure-blob]
+# type = "blob"
+# url = "mystorageaccount.blob.core.windows.net"
+# container = "mycontainer"
+# connection_string = "DefaultEndpointsProtocol=https;AccountName=..."
+# account_key = "your-account-key"
+
+# Proxy configuration (supported by ftp, sftp, s3, azure, blob):
+# [my-ftp-with-proxy]
+# type = "ftp"
+# url = "ftp.example.com"
+# username = "user"
+# password = "password"
+# [my-ftp-with-proxy.proxy]
+# host = "proxy.example.com"
+# port = 1080
+# username = "proxyuser"
+# password = "proxypass"

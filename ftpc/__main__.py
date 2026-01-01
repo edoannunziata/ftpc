@@ -1,4 +1,5 @@
 import argparse
+import importlib.resources
 import os
 import sys
 from pathlib import PurePath
@@ -167,6 +168,14 @@ def run_tui_loop(config: Config, initial_remote: str | None, initial_path: str) 
         path = "/"
 
 
+def create_default_config(path: str) -> None:
+    """Create a default configuration file from the sample config."""
+    sample = importlib.resources.files("ftpc").joinpath("sample_config.toml")
+    content = sample.read_text()
+    with open(path, "w") as f:
+        f.write(content)
+
+
 def config_file_type(path: str) -> Optional[IO[bytes]]:
     """Custom FileType that doesn't error if default file doesn't exist."""
     default_config_path = os.path.expanduser("~/.ftpcconf.toml")
@@ -192,10 +201,10 @@ def main() -> None:
 
     try:
         if args.config is None:
-            # Default config file doesn't exist
-            raise Exit(
-                f"Configuration file not found at {default_config_path}. Please create it first."
-            )
+            # Default config file doesn't exist, create it
+            create_default_config(default_config_path)
+            print(f"Created default configuration at {default_config_path}", file=sys.stderr)
+            args.config = open(default_config_path, "rb")
 
         # Load configuration using new Config system
         try:

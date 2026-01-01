@@ -58,6 +58,8 @@ pip install paramiko
 
 FTPC uses a TOML configuration file to manage connection details. By default, it looks for `~/.ftpcconf.toml`.
 
+If no configuration file exists, ftpc will automatically create a default one with a local filesystem remote. You can find a sample configuration in [`ftpc/sample_config.toml`](ftpc/sample_config.toml).
+
 ### Configuration Options
 
 Each remote connection is defined as a section in the TOML file with a `type` field specifying the storage backend.
@@ -281,3 +283,25 @@ All storage sessions provide these methods:
 | `mkdir(path)` | Create a directory |
 
 The `progress` callback receives bytes transferred and returns `False` to cancel.
+
+## Claude Code Skills
+
+This repository includes skills for [Claude Code](https://claude.ai/code) that enable AI agents to interact with remote storage backends.
+
+### Available Skills
+
+| Skill | Description |
+|-------|-------------|
+| `ftpc-storage` | Read-only access to storage backends. List directories, download files, inspect metadata. |
+| `ftpc-storage-write` | Full read-write access. Upload, delete, and create directories in addition to read operations. |
+
+### Installation
+
+Copy the skill directories from `skills/` to your Claude Code skills directory:
+
+```bash
+cp -r skills/ftpc-storage ~/.claude/skills/
+cp -r skills/ftpc-storage-write ~/.claude/skills/
+```
+
+The skills provide AI agents with documented patterns for using the `ftpc` library to access local filesystems, FTP/SFTP servers, S3 buckets, and Azure storage.
