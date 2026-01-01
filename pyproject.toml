@@ -12,13 +12,36 @@ authors = [
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
+keywords = [
+    "ftp",
+    "sftp",
+    "s3",
+    "azure",
+    "file-transfer",
+    "storage",
+    "tui",
+    "cli",
+    "cloud-storage",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console :: Curses",
     "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: File Transfer Protocol (FTP)",
+    "Topic :: System :: Filesystems",
     "Topic :: Utilities",
+    "Typing :: Typed",
 ]
 dependencies = [
     "windows-curses; sys_platform == 'win32'",
@@ -28,6 +51,7 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/edoannunziata/ftpc"
 Repository = "https://github.com/edoannunziata/ftpc"
+"Bug Tracker" = "https://github.com/edoannunziata/ftpc/issues"
 
 [project.optional-dependencies]
 azure = [
@@ -61,6 +85,10 @@ test = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
 ]
+dev = [
+    "build>=1.0.0",
+    "twine>=4.0.0",
+]
 
 [project.scripts]
 ftpc = "ftpc.__main__:main"
@@ -68,6 +96,9 @@ ftpc = "ftpc.__main__:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["ftpc*"]
+
+[tool.setuptools.package-data]
+ftpc = ["py.typed"]
 
 [tool.mypy]
 python_version = "3.11"
