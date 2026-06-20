@@ -1,0 +1,17 @@
+{
+  "name": "ftpc",
+  "version": "0.1.0",
+  "description": "File transfer client with modular storage backends.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "test": "bun test tests/bun",
+    "typecheck": "tsc --noEmit",
+    "build:exe": "bun build --target=bun src/index.ts --compile --outfile dist/ftpc"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.0",
+    "typescript": "^5.9.0"
+  }
+}

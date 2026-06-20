@@ -1,6 +1,9 @@
 # LLM
 CLAUDE.md
 
+# Bun / Node
+node_modules/
+
 # Raw data files
 data/*
 
