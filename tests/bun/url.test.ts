@@ -8,6 +8,16 @@ describe("parseStorageUrl", () => {
       host: "",
       path: "/home/user/data",
     });
+    expect(parseStorageUrl(".")).toEqual({
+      protocol: "file",
+      host: "",
+      path: ".",
+    });
+    expect(parseStorageUrl("./relative/path")).toEqual({
+      protocol: "file",
+      host: "",
+      path: "./relative/path",
+    });
   });
 
   test("parses ftp credentials and port", () => {

@@ -14,12 +14,16 @@ function decodeComponent(value: string | null): string | undefined {
   return decodeURIComponent(value);
 }
 
+function hasUrlScheme(input: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:/i.test(input);
+}
+
 export function parseStorageUrl(input: string): ParsedStorageUrl {
-  if (input.startsWith("/")) {
+  if (input.startsWith("/") || !hasUrlScheme(input)) {
     return {
       protocol: "file",
       host: "",
-      path: input,
+      path: input === "" ? "." : input,
     };
   }
 

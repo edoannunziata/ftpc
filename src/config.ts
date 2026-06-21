@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { ConfigError, RemoteNotFoundError, ValidationError } from "./errors.ts";
+import { parseStorageUrl } from "./url.ts";
 
 export const DEFAULT_CONFIG_PATH = join(homedir(), ".ftpcconf.toml");
 
@@ -28,9 +29,13 @@ export interface FtpConfig extends BaseRemoteConfig {
   type: "ftp";
   url: string;
   port: number;
+  portExplicit: boolean;
   username: string;
+  usernameExplicit: boolean;
   password: string;
+  passwordExplicit: boolean;
   tls: boolean;
+  tlsExplicit: boolean;
 }
 
 export interface S3Config extends BaseRemoteConfig {
@@ -55,6 +60,7 @@ export interface SftpConfig extends BaseRemoteConfig {
   type: "sftp";
   url: string;
   port: number;
+  portExplicit: boolean;
   username?: string;
   password?: string;
   keyFilename?: string;
@@ -81,10 +87,74 @@ export interface Config {
   warnings: string[];
 }
 
-export const DEFAULT_CONFIG_TEXT = `# ftpc configuration file
+export interface LoadConfigOptions {
+  createDefault?: boolean;
+}
 
+export const DEFAULT_CONFIG_TEXT = `# ftpc configuration file
+# See https://github.com/edoannunziata/ftpc for documentation
+
+# Local filesystem browser
 [local]
 type = "local"
+
+# Example FTP configuration:
+# [my-ftp-server]
+# type = "ftp"
+# url = "ftp.example.com"
+# port = 21
+# username = "user"
+# password = "password"
+# tls = true
+
+# Example SFTP configuration:
+# [my-sftp-server]
+# type = "sftp"
+# url = "sftp.example.com"
+# port = 22
+# username = "user"
+# password = "password"
+# key_filename = "~/.ssh/id_rsa"
+
+# Example S3 configuration:
+# [my-s3-bucket]
+# type = "s3"
+# bucket_name = "my-bucket"
+# region_name = "us-east-1"
+# endpoint_url = "https://s3.amazonaws.com"
+# aws_access_key_id = "AKIAIOSFODNN7EXAMPLE"
+# aws_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+# Example Azure Data Lake Storage Gen2 configuration:
+# [my-azure-datalake]
+# type = "azure"
+# url = "mystorageaccount.dfs.core.windows.net"
+# filesystem = "myfilesystem"
+# connection_string = "DefaultEndpointsProtocol=https;AccountName=..."
+# account_key = "your-account-key"
+
+# Example Azure Blob Storage configuration:
+# [my-azure-blob]
+# type = "blob"
+# url = "mystorageaccount.blob.core.windows.net"
+# container = "mycontainer"
+# connection_string = "DefaultEndpointsProtocol=https;AccountName=..."
+# account_key = "your-account-key"
+
+# SOCKS5 proxy configuration is implemented for FTP, SFTP, and anonymous S3
+# unsigned REST requests. Credentialed S3, Azure Data Lake, and Azure Blob proxy
+# configurations fail clearly until native SDK proxy transport is added.
+#
+# [my-ftp-with-proxy]
+# type = "ftp"
+# url = "ftp.example.com"
+# username = "user"
+# password = "password"
+# [my-ftp-with-proxy.proxy]
+# host = "proxy.example.com"
+# port = 1080
+# username = "proxyuser"
+# password = "proxypass"
 `;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -128,6 +198,14 @@ function parseProxy(data: Record<string, unknown>): ProxyConfig | undefined {
   };
 }
 
+function parseUrlWithDefaultProtocol(url: string, protocol: "ftp" | "sftp", label: string): ReturnType<typeof parseStorageUrl> {
+  try {
+    return parseStorageUrl(url.includes("://") ? url : `${protocol}://${url}`);
+  } catch (error) {
+    throw new ValidationError(`Invalid ${label} URL '${url}': ${(error as Error).message}`);
+  }
+}
+
 function parseRemote(name: string, data: Record<string, unknown>): RemoteConfig {
   const remoteType = data.type;
   if (typeof remoteType !== "string") {
@@ -145,16 +223,25 @@ function parseRemote(name: string, data: Record<string, unknown>): RemoteConfig 
         type: "ftp",
         url: requiredString(data, "url", "FTP configuration"),
         port: portNumber(data.port, 21, "FTP"),
+        portExplicit: data.port !== undefined,
         username: optionalString(data.username) ?? "anonymous",
+        usernameExplicit: data.username !== undefined,
         password: optionalString(data.password) ?? "anonymous@",
+        passwordExplicit: data.password !== undefined,
         tls: optionalBoolean(data.tls, false),
+        tlsExplicit: data.tls !== undefined,
         proxy,
       };
     case "s3": {
       const url = optionalString(data.url);
-      const bucketName = url?.startsWith("s3://")
-        ? url.slice("s3://".length)
-        : optionalString(data.bucket_name);
+      let bucketName = optionalString(data.bucket_name);
+      if (url?.startsWith("s3://")) {
+        try {
+          bucketName = parseStorageUrl(url).host;
+        } catch (error) {
+          throw new ValidationError(`Invalid S3 URL '${url}': ${(error as Error).message}`);
+        }
+      }
       if (!bucketName && !url) {
         throw new ValidationError("S3 configuration requires either 'url' or 'bucket_name'");
       }
@@ -181,16 +268,19 @@ function parseRemote(name: string, data: Record<string, unknown>): RemoteConfig 
         proxy,
       };
     case "sftp": {
+      const url = requiredString(data, "url", "SFTP configuration");
+      const parsed = parseUrlWithDefaultProtocol(url, "sftp", "SFTP");
       const password = optionalString(data.password);
       const keyFilename = optionalString(data.key_filename);
-      if (!password && !keyFilename) {
+      if (!password && !keyFilename && parsed.password === undefined) {
         throw new ValidationError("SFTP configuration requires either 'password' or 'key_filename'");
       }
       return {
         name,
         type: "sftp",
-        url: requiredString(data, "url", "SFTP configuration"),
+        url,
         port: portNumber(data.port, 22, "SFTP"),
+        portExplicit: data.port !== undefined,
         username: optionalString(data.username),
         password,
         keyFilename,
@@ -250,10 +340,14 @@ export function parseConfigText(text: string): Config {
   return { remotes, warnings };
 }
 
-export async function loadConfig(path = DEFAULT_CONFIG_PATH): Promise<Config> {
-  if (!existsSync(path) && path === DEFAULT_CONFIG_PATH) {
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, DEFAULT_CONFIG_TEXT, "utf8");
+export async function createDefaultConfig(path = DEFAULT_CONFIG_PATH): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, DEFAULT_CONFIG_TEXT, "utf8");
+}
+
+export async function loadConfig(path = DEFAULT_CONFIG_PATH, options: LoadConfigOptions = {}): Promise<Config> {
+  if (!existsSync(path) && (path === DEFAULT_CONFIG_PATH || options.createDefault === true)) {
+    await createDefaultConfig(path);
   }
   const text = await readFile(path, "utf8");
   return parseConfigText(text);
