@@ -179,6 +179,147 @@ function formatPath(path: string): string {
   return normalized === "." ? "/" : normalized;
 }
 
+const MONTHS = new Map([
+  ["jan", 0],
+  ["feb", 1],
+  ["mar", 2],
+  ["apr", 3],
+  ["may", 4],
+  ["jun", 5],
+  ["jul", 6],
+  ["aug", 7],
+  ["sep", 8],
+  ["oct", 9],
+  ["nov", 10],
+  ["dec", 11],
+]);
+
+function monthIndex(value: string): number | undefined {
+  return MONTHS.get(value.slice(0, 3).toLowerCase());
+}
+
+function normalizedYear(value: string): number | undefined {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed)) {
+    return undefined;
+  }
+  if (value.length === 2) {
+    return parsed >= 69 ? 1900 + parsed : 2000 + parsed;
+  }
+  return parsed;
+}
+
+function utcDate(year: number, month: number, day: number, hour = 0, minute = 0, second = 0): Date | undefined {
+  const date = new Date(Date.UTC(year, month, day, hour, minute, second));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month ||
+    date.getUTCDate() !== day ||
+    date.getUTCHours() !== hour ||
+    date.getUTCMinutes() !== minute ||
+    date.getUTCSeconds() !== second
+  ) {
+    return undefined;
+  }
+  return date;
+}
+
+function parseFtpRawModifiedAt(rawModifiedAt: string): Date | undefined {
+  const value = rawModifiedAt.trim().replace(/\s+/g, " ");
+  if (value === "") {
+    return undefined;
+  }
+
+  let match = value.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\.\d+)?$/);
+  if (match !== null) {
+    return utcDate(
+      Number.parseInt(match[1], 10),
+      Number.parseInt(match[2], 10) - 1,
+      Number.parseInt(match[3], 10),
+      Number.parseInt(match[4], 10),
+      Number.parseInt(match[5], 10),
+      Number.parseInt(match[6], 10),
+    );
+  }
+
+  match = value.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (match !== null) {
+    return utcDate(
+      Number.parseInt(match[1], 10),
+      Number.parseInt(match[2], 10) - 1,
+      Number.parseInt(match[3], 10),
+      Number.parseInt(match[4], 10),
+      Number.parseInt(match[5], 10),
+      match[6] === undefined ? 0 : Number.parseInt(match[6], 10),
+    );
+  }
+
+  match = value.match(/^([A-Za-z]{3})\s+(\d{1,2})\s+(\d{4})$/);
+  if (match !== null) {
+    const month = monthIndex(match[1]);
+    if (month !== undefined) {
+      return utcDate(Number.parseInt(match[3], 10), month, Number.parseInt(match[2], 10));
+    }
+  }
+
+  match = value.match(/^([A-Za-z]{3})\s+(\d{1,2})\s+(\d{1,2}):(\d{2})$/);
+  if (match !== null) {
+    const month = monthIndex(match[1]);
+    if (month !== undefined) {
+      return utcDate(
+        new Date().getUTCFullYear(),
+        month,
+        Number.parseInt(match[2], 10),
+        Number.parseInt(match[3], 10),
+        Number.parseInt(match[4], 10),
+      );
+    }
+  }
+
+  match = value.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})$/);
+  if (match !== null) {
+    const month = monthIndex(match[2]);
+    if (month !== undefined) {
+      return utcDate(Number.parseInt(match[3], 10), month, Number.parseInt(match[1], 10));
+    }
+  }
+
+  match = value.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{1,2}):(\d{2})$/);
+  if (match !== null) {
+    const month = monthIndex(match[2]);
+    if (month !== undefined) {
+      return utcDate(
+        new Date().getUTCFullYear(),
+        month,
+        Number.parseInt(match[1], 10),
+        Number.parseInt(match[3], 10),
+        Number.parseInt(match[4], 10),
+      );
+    }
+  }
+
+  match = value.match(/^(\d{2})-(\d{2})-(\d{2}|\d{4})\s+(\d{1,2}):(\d{2})(AM|PM)$/i);
+  if (match !== null) {
+    const year = normalizedYear(match[3]);
+    if (year !== undefined) {
+      const hour = Number.parseInt(match[4], 10);
+      if (hour < 1 || hour > 12) {
+        return undefined;
+      }
+      const hour24 = (hour % 12) + (match[6].toUpperCase() === "PM" ? 12 : 0);
+      return utcDate(
+        year,
+        Number.parseInt(match[1], 10) - 1,
+        Number.parseInt(match[2], 10),
+        hour24,
+        Number.parseInt(match[5], 10),
+      );
+    }
+  }
+
+  return undefined;
+}
+
 function descriptorFromInfo(info: FileInfo): FileDescriptor {
   const type = info.isDirectory ? "directory" : "file";
   return {
@@ -186,7 +327,7 @@ function descriptorFromInfo(info: FileInfo): FileDescriptor {
     name: baseName(info.name),
     type,
     size: info.size,
-    modifiedTime: info.modifiedAt,
+    modifiedTime: info.modifiedAt ?? parseFtpRawModifiedAt(info.rawModifiedAt),
   };
 }
 

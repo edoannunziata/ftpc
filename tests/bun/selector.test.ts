@@ -128,24 +128,33 @@ url = "sftp://sftp-user:sftp-secret@sftp.example.com/home"
 });
 
 describe("renderRemoteSelectorFrame", () => {
-  test("renders remotes, status, and footer", () => {
+  test("renders remotes with an empty footer message", () => {
     const state = initialRemoteSelectorState(remoteEntriesFromConfig(config));
-    const rendered = frameToString(renderRemoteSelectorFrame(state, { width: 70, height: 8 }));
+    const frame = renderRemoteSelectorFrame(state, { width: 70, height: 8 });
+    const rendered = frameToString(frame);
 
     expect(rendered).toContain("Select Remote  /");
-    expect(rendered).toContain("> alpha [s3]");
+    expect(rendered).toContain(">  alpha [s3]");
     expect(rendered).toContain("zeta [local]");
-    expect(rendered).toContain("enter select");
+    expect(frame.lines[7].trim()).toBe("");
+    expect(rendered).not.toContain("enter select");
+    expect(rendered).not.toContain("q quit");
   });
 
-  test("renders expanded help dialog", () => {
+  test("renders expanded help screen", () => {
     const state = applyRemoteSelectorCommand(initialRemoteSelectorState(remoteEntriesFromConfig(config)), "help").state;
-    const rendered = frameToString(renderRemoteSelectorFrame(state, { width: 80, height: 20 }));
+    const frame = renderRemoteSelectorFrame(state, { width: 80, height: 20 });
+    const rendered = frameToString(frame);
 
+    expect(frame.lines).toHaveLength(20);
+    expect(frame.lines[0]).toContain("Remote Selector Help");
+    expect(frame.lines[19]).toContain("press any key to continue");
     expect(rendered).toContain("Remote Selector Help");
     expect(rendered).toContain("Navigation:");
     expect(rendered).toContain("Actions:");
-    expect(rendered).toContain("Press any key to close");
+    expect(rendered).toContain("press any key to continue");
+    expect(rendered).not.toContain(">  alpha [s3]");
+    expect(rendered).not.toContain("zeta [local]");
   });
 
   test("renders details and path dialogs", () => {
@@ -169,9 +178,10 @@ describe("renderRemoteSelectorFrame", () => {
     const state = initialRemoteSelectorState(remoteEntriesFromConfig(config));
     const rendered = frameToString(renderRemoteSelectorFrame(state, { width: 70, height: 8 }, { colors: true }));
 
-    expect(rendered).toContain("\x1b[1;37;42mSelect Remote");
-    expect(rendered).toContain("\x1b[1;32;7m> alpha [s3]");
-    expect(rendered).toContain("\x1b[32m  zeta [local]");
+    expect(rendered).toContain("\x1b[0;1;38;2;255;255;255;42mSelect Remote");
+    expect(rendered).toContain("\x1b[0;1;31m>\x1b[0m\x1b[0;1m  alpha [s3]");
+    expect(rendered).toContain("   zeta [local]");
+    expect(rendered).not.toContain("\x1b[1;32;7m");
   });
 });
 

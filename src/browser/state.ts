@@ -9,6 +9,7 @@ export interface BrowserState {
   title: string;
   cwd: string;
   entries: FileDescriptor[];
+  loadingMessage?: string;
   mode?: BrowserMode;
   selected: number;
   status: string;
@@ -193,6 +194,7 @@ export function withEntries(state: BrowserState, entries: FileDescriptor[], stat
   return {
     ...state,
     entries,
+    loadingMessage: undefined,
     selected: clampSelection(state.selected, entries.length),
     prompt: undefined,
     status: status ?? `${entries.length} item${entries.length === 1 ? "" : "s"}`,

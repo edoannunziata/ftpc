@@ -168,12 +168,17 @@ describe("browser state", () => {
 
 describe("renderBrowser", () => {
   test("renders current path, entries, and help", () => {
-    const rendered = renderBrowser(state, { width: 80, height: 10 });
+    const frame = renderBrowserFrame(state, { width: 80, height: 10 });
+    const rendered = frameToString(frame);
 
-    expect(rendered).toContain("Local Storage  /tmp/project");
-    expect(rendered).toContain("> D src");
+    expect(frame.lines[0]).toContain("Local Storage");
+    expect(frame.lines[0]).not.toContain("/tmp/project");
+    expect(frame.lines[9]).toContain("/tmp/project");
+    expect(rendered).toContain(">  D src");
     expect(rendered).toContain("F README.md");
-    expect(rendered).toContain("q quit");
+    expect(rendered).not.toContain("q quit");
+    expect(frame.lines[2].indexOf("512B")).toBe(56);
+    expect(frame.lines[2]).toContain("512B  2026-06-20 10:30");
   });
 
   test("renders empty directory message", () => {
@@ -181,17 +186,40 @@ describe("renderBrowser", () => {
 
     expect(rendered).toContain("No files or directories found");
     expect(rendered).toContain("(Press 'r' to refresh)");
-    expect(rendered).toContain("0 items");
+    expect(rendered).toContain("/tmp/project");
   });
 
-  test("renders expanded help dialog", () => {
-    const helpState = applyBrowserCommand(state, "help").state;
-    const rendered = renderBrowser(helpState, { width: 90, height: 24 });
+  test("renders connecting state in the main browser area", () => {
+    const rendered = renderBrowser({
+      ...state,
+      entries: [],
+      loadingMessage: "Connecting...",
+      status: "",
+    }, { width: 60, height: 8 });
 
+    expect(rendered).toContain("Connecting...");
+    expect(rendered).not.toContain("No files or directories found");
+    expect(rendered).not.toContain("Loading...");
+    expect(rendered).toContain("/tmp/project");
+  });
+
+  test("renders expanded help screen", () => {
+    const helpState = applyBrowserCommand(state, "help").state;
+    const frame = renderBrowserFrame(helpState, { width: 90, height: 24 });
+    const rendered = frameToString(frame);
+    const uploadHelpState = applyBrowserCommand({ ...state, mode: "upload" }, "help").state;
+    const renderedUploadHelp = frameToString(renderBrowserFrame(uploadHelpState, { width: 90, height: 24 }, { colors: true }));
+
+    expect(frame.lines).toHaveLength(24);
+    expect(frame.lines[0]).toContain("Key Commands");
+    expect(frame.lines[23]).toContain("press any key to continue");
     expect(rendered).toContain("Key Commands");
     expect(rendered).toContain("Navigation Controls:");
     expect(rendered).toContain("File Operations:");
-    expect(rendered).toContain("Press any key to close");
+    expect(rendered).toContain("press any key to continue");
+    expect(rendered).not.toContain(">  D src");
+    expect(rendered).not.toContain("README.md");
+    expect(renderedUploadHelp).toContain("\x1b[0;1;38;2;255;255;255;41mKey Commands");
   });
 
   test("renders confirmation and mkdir prompt dialogs", () => {
@@ -234,11 +262,17 @@ describe("renderBrowser", () => {
   test("can render ANSI colors for terminal frames", () => {
     const normal = frameToString(renderBrowserFrame(state, { width: 80, height: 10 }, { colors: true }));
     const upload = frameToString(renderBrowserFrame({ ...state, mode: "upload" }, { width: 80, height: 10 }, { colors: true }));
+    const help = frameToString(renderBrowserFrame(applyBrowserCommand(state, "help").state, { width: 80, height: 10 }, { colors: true }));
 
-    expect(normal).toContain("\x1b[1;37;44mLocal Storage");
-    expect(normal).toContain("\x1b[1;36;7m> D src");
-    expect(normal).toContain("\x1b[32m  F README.md");
-    expect(upload).toContain("\x1b[1;37;41mLocal Storage");
+    expect(normal).toContain("\x1b[0;1;38;2;255;255;255;44mLocal Storage");
+    expect(normal).toContain("\x1b[0;1;31m>\x1b[0m\x1b[0;1;36m  D src");
+    expect(normal).not.toContain("\x1b[1;36;7m");
+    expect(normal).toContain("\x1b[0;32m   F README.md");
+    expect(upload).toContain("\x1b[0;1;38;2;255;255;255;41mLocal Storage");
+    expect(help).toContain("\x1b[0;1;38;2;255;255;255;44mKey Commands");
+    expect(help).toContain("\x1b[0;1;38;2;255;255;255;44mpress any key to continue");
+    expect(help).not.toContain("\x1b[0;1;31m>");
+    expect(help).not.toContain("\x1b[0;32m");
   });
 
   test("serializes exactly the frame height without a scrolling newline", () => {
@@ -333,6 +367,7 @@ describe("runBrowser transfers", () => {
       basePath: "/",
       async list() {
         listCalls += 1;
+        await Bun.sleep(10);
         throw new Error("list failed");
       },
       async download() {},
@@ -354,7 +389,9 @@ describe("runBrowser transfers", () => {
       output: output as unknown as WriteStream,
     });
 
-    await waitFor(() => output.value.includes("Loading..."), "initial loading frame");
+    await waitFor(() => output.value.includes("Connecting..."), "initial connecting frame");
+    expect(output.value).not.toContain("No files or directories found");
+    expect(output.value).not.toContain("Loading...");
     await waitFor(() => output.value.includes("Error: list failed"), "listing error status");
 
     input.emit("keypress", "q", { name: "q" });

@@ -63,9 +63,10 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
     title: remoteTitle,
     cwd: initialBrowserPath(session, options.initialPath),
     entries: [],
+    loadingMessage: "Connecting...",
     mode: "normal",
     selected: 0,
-    status: "Loading...",
+    status: "",
   };
   let remoteCwd = state.cwd;
   let history: string[] = [];
@@ -98,6 +99,7 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
       state = {
         ...state,
         entries: [],
+        loadingMessage: undefined,
         selected: 0,
         prompt: undefined,
         status: `Error: ${(error as Error).message}`,

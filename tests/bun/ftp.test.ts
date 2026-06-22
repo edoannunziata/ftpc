@@ -9,11 +9,12 @@ import { tmpdir } from "node:os";
 import { createFtpSocksSocket, FtpClient, type FtpBackend } from "../../src/clients/ftp.ts";
 import { ListingError, TransferError } from "../../src/errors.ts";
 
-function ftpFile(name: string, type: FileType, size: number, modifiedAt?: Date): FileInfo {
+function ftpFile(name: string, type: FileType, size: number, modifiedAt?: Date, rawModifiedAt = ""): FileInfo {
   const info = new FileInfo(name);
   info.type = type;
   info.size = size;
   info.modifiedAt = modifiedAt;
+  info.rawModifiedAt = rawModifiedAt;
   return info;
 }
 
@@ -191,6 +192,50 @@ describe("FtpClient", () => {
     expect(files).toEqual([
       { path: "docs", name: "docs", type: "directory", size: 0, modifiedTime: undefined },
       { path: "readme.txt", name: "readme.txt", type: "file", size: 123, modifiedTime: modifiedAt },
+    ]);
+  });
+
+  test("parses raw modification dates from FTP LIST directory listings", async () => {
+    const currentYear = new Date().getUTCFullYear();
+    const backend = new FakeFtpBackend([
+      ftpFile("recent.txt", FileType.File, 10, undefined, "Jun 20 10:30"),
+      ftpFile("older.txt", FileType.File, 20, undefined, "Dec 11 2025"),
+      ftpFile("numeric.txt", FileType.File, 30, undefined, "2026-06-20 10:30"),
+      ftpFile("dos.txt", FileType.File, 40, undefined, "06-20-26 10:30AM"),
+    ]);
+    const client = new FtpClient({ host: "ftp.example.com", backend });
+
+    const files = await client.list("/");
+
+    expect(files).toEqual([
+      {
+        path: "recent.txt",
+        name: "recent.txt",
+        type: "file",
+        size: 10,
+        modifiedTime: new Date(Date.UTC(currentYear, 5, 20, 10, 30)),
+      },
+      {
+        path: "older.txt",
+        name: "older.txt",
+        type: "file",
+        size: 20,
+        modifiedTime: new Date("2025-12-11T00:00:00.000Z"),
+      },
+      {
+        path: "numeric.txt",
+        name: "numeric.txt",
+        type: "file",
+        size: 30,
+        modifiedTime: new Date("2026-06-20T10:30:00.000Z"),
+      },
+      {
+        path: "dos.txt",
+        name: "dos.txt",
+        type: "file",
+        size: 40,
+        modifiedTime: new Date("2026-06-20T10:30:00.000Z"),
+      },
     ]);
   });
 

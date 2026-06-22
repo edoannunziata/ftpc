@@ -126,7 +126,7 @@ export function initialRemoteSelectorState(entries: RemoteSelectorEntry[], defau
     title: "Select Remote",
     entries,
     selected: 0,
-    status: "Enter select, o path, i details, / search, q quit",
+    status: "",
     defaultPath,
   };
 }
