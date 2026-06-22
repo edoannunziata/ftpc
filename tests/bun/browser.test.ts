@@ -22,7 +22,7 @@ import {
   ScreenBuffer,
 } from "../../src/browser/render.ts";
 import { runBrowser } from "../../src/browser/terminal.ts";
-import type { StorageSession } from "../../src/storage.ts";
+import { Storage, type StorageSession } from "../../src/storage.ts";
 import type { TransferOptions } from "../../src/types.ts";
 
 const state: BrowserState = {
@@ -303,6 +303,26 @@ async function waitFor(condition: () => boolean, label: string): Promise<void> {
 }
 
 describe("runBrowser transfers", () => {
+  test("browses protocol-less relative local roots without double-resolving them", async () => {
+    const input = new FakeInput();
+    const output = new FakeOutput();
+    const session = Storage.connect("./src");
+    const running = runBrowser(session, {
+      input: input as unknown as ReadStream,
+      output: output as unknown as WriteStream,
+    });
+
+    try {
+      await waitFor(() => output.value.includes("storage.ts") || output.value.includes("Error:"), "relative local browser render");
+      expect(output.value).toContain("storage.ts");
+      expect(output.value).not.toContain("src/src");
+    } finally {
+      input.emit("keypress", "q", { name: "q" });
+      await running;
+      await session.close();
+    }
+  });
+
   test("shows listing errors inside the browser instead of rejecting startup", async () => {
     const input = new FakeInput();
     const output = new FakeOutput();

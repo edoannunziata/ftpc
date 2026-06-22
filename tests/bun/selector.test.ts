@@ -34,6 +34,24 @@ describe("remote selector state", () => {
     expect(entries[0].details).toContain("Region: eu-west-1");
   });
 
+  test("redacts URL credentials from remote details", () => {
+    const entries = remoteEntriesFromConfig(parseConfigText(`
+[ftp]
+type = "ftp"
+url = "ftp://ftp-user:ftp-secret@ftp.example.com/pub"
+
+[sftp]
+type = "sftp"
+url = "sftp://sftp-user:sftp-secret@sftp.example.com/home"
+`));
+    const details = entries.flatMap((entry) => entry.details);
+
+    expect(details).toContain("URL: ftp://***@ftp.example.com/pub");
+    expect(details).toContain("URL: sftp://***@sftp.example.com/home");
+    expect(details.join("\n")).not.toContain("ftp-secret");
+    expect(details.join("\n")).not.toContain("sftp-secret");
+  });
+
   test("maps selector keys to commands", () => {
     expect(keyToRemoteSelectorCommand("j", { name: "j" })).toBe("down");
     expect(keyToRemoteSelectorCommand("G", { name: "g" })).toBe("last");

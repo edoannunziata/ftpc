@@ -1,5 +1,5 @@
 import { emitKeypressEvents } from "node:readline";
-import { join as joinLocalPath } from "node:path";
+import { isAbsolute as isLocalPathAbsolute, join as joinLocalPath, resolve as resolveLocalPath } from "node:path";
 import type { ReadStream, WriteStream } from "node:tty";
 import { joinRemotePath, parentRemotePath } from "../paths.ts";
 import type { FileDescriptor, TransferOptions, TransferProgress } from "../types.ts";
@@ -44,6 +44,14 @@ async function loadEntries(session: StorageSession, cwd: string): Promise<FileDe
   });
 }
 
+function initialBrowserPath(session: StorageSession, initialPath: string | undefined): string {
+  const path = initialPath ?? session.basePath;
+  if (session.name === "Local Storage" && !isLocalPathAbsolute(path)) {
+    return resolveLocalPath(path);
+  }
+  return path;
+}
+
 export async function runBrowser(session: StorageSession, options: BrowserRunOptions = {}): Promise<void> {
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;
@@ -53,7 +61,7 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
   const uploadSession = Storage.local(process.cwd());
   let state: BrowserState = {
     title: remoteTitle,
-    cwd: options.initialPath ?? session.basePath,
+    cwd: initialBrowserPath(session, options.initialPath),
     entries: [],
     mode: "normal",
     selected: 0,

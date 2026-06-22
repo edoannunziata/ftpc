@@ -65,10 +65,10 @@ function remoteDetails(remote: RemoteConfig): string[] {
     case "local":
       break;
     case "ftp":
-      details.push(`URL: ${remote.url}`, `Username: ${remote.username}`, `Port: ${remote.port}`, `TLS: ${remote.tls ? "yes" : "no"}`);
+      details.push(`URL: ${redactUrlCredentials(remote.url)}`, `Username: ${remote.username}`, `Port: ${remote.port}`, `TLS: ${remote.tls ? "yes" : "no"}`);
       break;
     case "sftp":
-      details.push(`URL: ${remote.url}`, `Port: ${remote.port}`);
+      details.push(`URL: ${redactUrlCredentials(remote.url)}`, `Port: ${remote.port}`);
       if (remote.username !== undefined) {
         details.push(`Username: ${remote.username}`);
       }
@@ -103,6 +103,22 @@ function remoteDetails(remote: RemoteConfig): string[] {
   }
 
   return details;
+}
+
+function redactUrlCredentials(input: string): string {
+  const schemeIndex = input.indexOf("://");
+  const authorityStart = schemeIndex === -1 ? 0 : schemeIndex + 3;
+  const remainder = input.slice(authorityStart);
+  const authorityEndOffset = remainder.search(/[/?#]/);
+  const authorityEnd = authorityEndOffset === -1 ? input.length : authorityStart + authorityEndOffset;
+  const authority = input.slice(authorityStart, authorityEnd);
+  const credentialEnd = authority.lastIndexOf("@");
+
+  if (credentialEnd === -1) {
+    return input;
+  }
+
+  return `${input.slice(0, authorityStart)}***@${authority.slice(credentialEnd + 1)}${input.slice(authorityEnd)}`;
 }
 
 export function initialRemoteSelectorState(entries: RemoteSelectorEntry[], defaultPath = "/"): RemoteSelectorState {
