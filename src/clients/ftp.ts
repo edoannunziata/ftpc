@@ -9,6 +9,7 @@ import type { FileDescriptor, StorageClient, TransferOptions } from "../types.ts
 import { ListingError, TransferError } from "../errors.ts";
 
 export interface FtpBackend {
+  availableListCommands?: string[];
   access(options: {
     host?: string;
     port?: number;
@@ -41,6 +42,8 @@ interface SocketConnectOptions {
   host?: string;
   port?: number;
 }
+
+const FTP_TIMEOUT_MS = 30_000;
 
 class FtpSocksSocket extends Duplex {
   private inner: Socket | undefined;
@@ -167,11 +170,23 @@ export function createFtpSocksSocket(proxy: ProxyConfig, connector: Socks5Connec
 }
 
 function createBasicFtpBackend(proxy?: ProxyConfig, proxyConnector?: Socks5Connector): FtpBackend {
-  const backend = new BasicFtpClient(5000);
+  const backend = new BasicFtpClient(FTP_TIMEOUT_MS);
   if (proxy !== undefined) {
     backend.ftp._newSocket = () => createFtpSocksSocket(proxy, proxyConnector);
   }
   return backend;
+}
+
+function preferPlainListFallback(backend: FtpBackend): void {
+  if (backend.availableListCommands === undefined) {
+    return;
+  }
+
+  const commands = backend.availableListCommands.filter((command) => command !== "LIST -a");
+  if (!commands.includes("LIST")) {
+    commands.push("LIST");
+  }
+  backend.availableListCommands = commands;
 }
 
 function formatPath(path: string): string {
@@ -371,6 +386,7 @@ export class FtpClient implements StorageClient {
       password: this.password,
       secure: this.tls,
     });
+    preferPlainListFallback(this.backend);
     this.connected = true;
   }
 

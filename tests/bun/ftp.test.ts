@@ -19,6 +19,7 @@ function ftpFile(name: string, type: FileType, size: number, modifiedAt?: Date, 
 }
 
 class FakeFtpBackend implements FtpBackend {
+  availableListCommands?: string[];
   accessCalls: Parameters<FtpBackend["access"]>[0][] = [];
   listCalls: Array<string | undefined> = [];
   downloadCalls: Array<{ localPath: string; remotePath: string }> = [];
@@ -193,6 +194,18 @@ describe("FtpClient", () => {
       { path: "docs", name: "docs", type: "directory", size: 0, modifiedTime: undefined },
       { path: "readme.txt", name: "readme.txt", type: "file", size: 123, modifiedTime: modifiedAt },
     ]);
+  });
+
+  test("prefers plain LIST over LIST -a after connecting", async () => {
+    const backend = new FakeFtpBackend([
+      ftpFile("readme.txt", FileType.File, 123),
+    ]);
+    backend.availableListCommands = ["LIST -a", "LIST"];
+    const client = new FtpClient({ host: "ftp.example.com", backend });
+
+    await client.list("/");
+
+    expect(backend.availableListCommands).toEqual(["LIST"]);
   });
 
   test("parses raw modification dates from FTP LIST directory listings", async () => {

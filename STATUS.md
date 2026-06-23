@@ -1,6 +1,6 @@
 # ftpc Bun Migration Status
 
-Date: 2026-06-21
+Date: 2026-06-23
 
 ## Current State
 
@@ -31,7 +31,11 @@ Completed so far:
   including listing, download, upload, delete, mkdir, and explicit FTPS
   support. FTP mkdir now sends a single `MKD` command instead of using
   recursive directory creation, matching the old Python client's failure
-  behavior for existing directories or missing parents.
+  behavior for existing directories or missing parents. The FTP adapter now uses
+  the default `basic-ftp` 30 second timeout instead of the earlier 5 second
+  timeout, and it prefers plain `LIST` over `LIST -a` fallback after connecting
+  because some public FTP servers return an empty successful response for
+  `LIST -a`.
 - SFTP backend added in `src/clients/sftp.ts` using `ssh2`, including listing,
   download, upload, delete, mkdir, password auth, private-key auth, and
   home-relative private-key paths. When both `password` and `key_filename` are
@@ -108,6 +112,20 @@ Completed so far:
   remote path, including no-scheme `user:pass@host/path` URLs. Azure Data Lake
   and Azure Blob integration helpers now also derive filesystem/container names
   from no-scheme account URLs with path prefixes.
+- Real S3 service integration has been verified against the owned
+  `s3://ftpc-test-bucket` bucket in `eu-north-1` with explicit access-key
+  credentials, covering mkdir placeholder creation, upload, listing, download,
+  and delete.
+- Public smoke targets were added to the local `~/.ftpcconf.toml` for later
+  ad-hoc checks, including DLP Test FTP/S3, Rebex FTP/FTPS/SFTP, NOAA GOES-16
+  public S3, and an Azure Open Datasets Blob endpoint. These are useful smoke
+  targets but not all support the full read-write-delete integration workflow.
+- Rebex FTPS was probed under Bun 1.3.14 for the `425 Cannot secure data
+  connection - TLS session resumption required` failure. Forcing TLS 1.2 through
+  `secureOptions` did not work under Bun: `maxVersion`, `minVersion` plus
+  `maxVersion`, and `secureProtocol` all still negotiated TLS 1.3 and failed
+  with the same 425. The same `basic-ftp` probe under Node 22.22.0 negotiated
+  TLS 1.2 and listed successfully.
 - Bun tests added under `tests/bun`.
 - `node_modules/` added to `.gitignore`; `dist/` was already ignored.
 
@@ -116,6 +134,10 @@ Verification currently passes:
 - `bun run typecheck`
 - `bun test tests/bun`
 - `bun run build:exe`
+- gated S3 real-service workflow against `s3://ftpc-test-bucket` when
+  `FTPC_INTEGRATION=1`, `FTPC_INTEGRATION_S3_REGION=eu-north-1`, and
+  `FTPC_INTEGRATION_S3_AWS_ACCESS_KEY_ID` /
+  `FTPC_INTEGRATION_S3_AWS_SECRET_ACCESS_KEY` are supplied
 - compiled binary smoke checks for version, local listing, upload, download,
   and mkdir
 - compiled binary smoke checks for clean CLI bad-config error handling
@@ -144,8 +166,9 @@ storage interface.
 
 Next migration slices:
 
-1. Run the gated integration tests against real FTP/FTPS, SFTP, S3, Azure Data
-   Lake, and Azure Blob services and fix any service-specific failures.
+1. Run the remaining gated integration tests against owned writable FTP/FTPS,
+   SFTP, Azure Data Lake, and Azure Blob services and fix any service-specific
+   failures.
 2. Remove Python packaging only after Bun parity and compiled-binary checks are
    strong enough.
 
@@ -185,10 +208,24 @@ Optional backend-specific settings:
   unsigned REST requests. Credentialed S3 still uses Bun's native S3 transport,
   which is not proxied yet. Azure Data Lake and Azure Blob proxy transport are
   not implemented in the Bun adapters yet.
-- Anonymous S3 access has a mocked unsigned REST implementation, but has not
-  yet been verified against a real public bucket in this workspace.
-- Remote adapters have mocked tests and skipped-by-default real-service tests,
-  but the real-service tests have not yet been run in this workspace.
+- Anonymous S3 listing has been verified against the public NOAA GOES-16 bucket.
+  The DLP Test public S3 bucket allows unsigned PUT/GET by exact key but denies
+  bucket listing and DELETE, so it is not suitable for the full integration
+  workflow.
+- S3 has passed the full real-service workflow against an owned bucket. FTP,
+  FTPS, SFTP, Azure Data Lake, and Azure Blob still need owned writable
+  real-service validation. DLP Test FTP is useful as a public probe but has
+  unreliable passive data-port behavior from this environment, so it is not a
+  good green-gate target.
+- Some strict FTPS servers that require TLS session resumption on passive data
+  connections are a known Bun limitation for now. `basic-ftp` already attempts
+  to reuse the control-channel TLS session, and the Node runtime succeeds
+  against Rebex FTPS, but Bun 1.3.14 does not honor the tested TLS 1.2
+  `secureOptions` knobs and still fails with `425 Cannot secure data connection
+  - TLS session resumption required`. No Node helper fallback is planned.
+- Public Azure Blob listing against Azure Open Datasets currently fails because
+  the Bun Azure Blob adapter uses Azure identity or explicit keys and does not
+  yet support anonymous public-container access.
 - The browser can list, navigate, refresh, search by prefix, download files
   after confirmation, enter upload mode to browse local files and upload after
   confirmation, delete files after confirmation, create directories, and quit in
