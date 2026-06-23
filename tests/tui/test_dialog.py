@@ -20,6 +20,19 @@ class TestDialogSystem(unittest.TestCase):
         """Set up test fixtures."""
         self.mock_stdscr = Mock()
         self.mock_stdscr.getmaxyx.return_value = (24, 80)  # Standard terminal size
+
+    def assert_box_drawing_outline(self, mock_dialog):
+        """Assert dialogs draw their own Unicode outline instead of using curses.box."""
+        rendered_text = "".join(
+            str(call.args[2])
+            for call in mock_dialog.addstr.call_args_list
+            if len(call.args) >= 3
+        )
+
+        mock_dialog.box.assert_not_called()
+        mock_dialog.bkgd.assert_called_once_with(" ", 0)
+        for char in "┌┐└┘─│":
+            self.assertIn(char, rendered_text)
     
     @patch('curses.newwin')
     def test_init_dialog_box_basic(self, mock_newwin):
@@ -39,7 +52,7 @@ class TestDialogSystem(unittest.TestCase):
         
         # Verify dialog was created
         mock_newwin.assert_called_once()
-        mock_dialog.box.assert_called_once()
+        self.assert_box_drawing_outline(mock_dialog)
         mock_dialog.refresh.assert_called_once()
         
         # Verify title and content were added
@@ -88,7 +101,7 @@ class TestDialogSystem(unittest.TestCase):
         
         # Verify dialog was created and shown
         mock_newwin.assert_called_once()
-        mock_dialog.box.assert_called_once()
+        self.assert_box_drawing_outline(mock_dialog)
         mock_dialog.refresh.assert_called_once()
     
     @patch('curses.newwin')
@@ -152,7 +165,7 @@ class TestDialogSystem(unittest.TestCase):
         
         # Verify dialog was created
         mock_newwin.assert_called_once()
-        mock_dialog.box.assert_called_once()
+        self.assert_box_drawing_outline(mock_dialog)
         mock_dialog.refresh.assert_called_once()
         
         # Verify help content was added (multiple addstr calls)
@@ -191,7 +204,7 @@ class TestDialogSystem(unittest.TestCase):
             self.assertIs(p, progress)
             # Dialog should be created
             mock_newwin.assert_called_once()
-            mock_dialog.box.assert_called_once()
+            self.assert_box_drawing_outline(mock_dialog)
         
         # After context exit, dialog should be cleaned up
         self.assertIsNone(progress.dialog)

@@ -82,6 +82,15 @@ const BROWSER_HELP_LINES = [
   "  q          - Quit program",
 ];
 
+const BOX = {
+  topLeft: "┌",
+  topRight: "┐",
+  bottomLeft: "└",
+  bottomRight: "┘",
+  horizontal: "─",
+  vertical: "│",
+};
+
 function cursorTo(row: number, column: number): string {
   return `\x1b[${row};${column}H`;
 }
@@ -169,7 +178,7 @@ function centeredTitleBorder(title: string, width: number): string {
   const label = truncate(` ${title} `, innerWidth);
   const left = Math.max(0, Math.floor((innerWidth - label.length) / 2));
   const right = Math.max(0, innerWidth - label.length - left);
-  return `+${"-".repeat(left)}${label}${"-".repeat(right)}+`;
+  return `${BOX.topLeft}${BOX.horizontal.repeat(left)}${label}${BOX.horizontal.repeat(right)}${BOX.topRight}`;
 }
 
 function dialogLine(text: string, width: number): string {
@@ -178,17 +187,121 @@ function dialogLine(text: string, width: number): string {
     return truncate(text, width);
   }
   const contentWidth = Math.max(0, innerWidth - 2);
-  return `| ${truncate(text, contentWidth).padEnd(contentWidth, " ")} |`;
+  return `${BOX.vertical} ${truncate(text, contentWidth).padEnd(contentWidth, " ")} ${BOX.vertical}`;
 }
 
-function replaceAt(
-  base: string,
+function appendSegment(
+  segments: StyledSegment[],
+  text: string,
+  style: LineStyle | undefined,
+): void {
+  if (text === "") {
+    return;
+  }
+
+  const previous = segments.at(-1);
+  if (previous !== undefined && previous.style === style) {
+    previous.text += text;
+    return;
+  }
+
+  segments.push({ text, style });
+}
+
+function styledSegments(line: StyledLine, width: number): StyledSegment[] {
+  const segments: StyledSegment[] = [];
+  let used = 0;
+
+  if (line.segments === undefined) {
+    const text =
+      line.fill === true
+        ? line.text.padEnd(width, " ").slice(0, width)
+        : line.text.slice(0, width);
+    appendSegment(segments, text, line.style);
+    return segments;
+  }
+
+  for (const segment of line.segments) {
+    const available = Math.max(0, width - used);
+    if (available === 0) {
+      break;
+    }
+
+    const text = segment.text.slice(0, available);
+    appendSegment(segments, text, segment.style ?? line.style);
+    used += text.length;
+  }
+
+  if (line.fill === true && used < width) {
+    appendSegment(segments, " ".repeat(width - used), line.style);
+  }
+
+  return segments;
+}
+
+function segmentLength(segments: StyledSegment[]): number {
+  return segments.reduce((length, segment) => length + segment.text.length, 0);
+}
+
+function sliceSegments(
+  segments: StyledSegment[],
+  start: number,
+  end: number,
+): StyledSegment[] {
+  const sliced: StyledSegment[] = [];
+  let offset = 0;
+
+  for (const segment of segments) {
+    const nextOffset = offset + segment.text.length;
+    if (nextOffset <= start) {
+      offset = nextOffset;
+      continue;
+    }
+    if (offset >= end) {
+      break;
+    }
+
+    appendSegment(
+      sliced,
+      segment.text.slice(
+        Math.max(0, start - offset),
+        Math.min(segment.text.length, end - offset),
+      ),
+      segment.style,
+    );
+    offset = nextOffset;
+  }
+
+  return sliced;
+}
+
+function overlayStyledLine(
+  line: StyledLine,
+  width: number,
   start: number,
   replacement: string,
-  width: number,
-): string {
-  const padded = base.padEnd(width, " ").slice(0, width);
-  return `${padded.slice(0, start)}${replacement}${padded.slice(start + replacement.length)}`;
+): StyledLine {
+  const baseSegments = styledSegments(line, width);
+  const segments = sliceSegments(baseSegments, 0, start);
+  const currentLength = segmentLength(segments);
+
+  if (currentLength < start) {
+    appendSegment(segments, " ".repeat(start - currentLength), undefined);
+  }
+
+  appendSegment(segments, replacement, "dialog");
+  for (const segment of sliceSegments(
+    baseSegments,
+    start + replacement.length,
+    width,
+  )) {
+    appendSegment(segments, segment.text, segment.style);
+  }
+
+  return {
+    text: segments.map((segment) => segment.text).join(""),
+    segments,
+  };
 }
 
 export function overlayDialog(
@@ -217,7 +330,7 @@ export function overlayDialog(
       .slice(0, visibleContentRows)
       .map((line) => dialogLine(line, dialogWidth)),
     dialogLine(prompt, dialogWidth),
-    `+${"-".repeat(Math.max(0, dialogWidth - 2))}+`,
+    `${BOX.bottomLeft}${BOX.horizontal.repeat(Math.max(0, dialogWidth - 2))}${BOX.bottomRight}`,
   ].slice(0, dialogHeight);
 
   for (const [index, dialogRow] of dialogRows.entries()) {
@@ -225,11 +338,7 @@ export function overlayDialog(
     if (target < 0 || target >= output.length) {
       continue;
     }
-    output[target] = {
-      text: replaceAt(output[target].text, x, dialogRow, width),
-      style: "dialog",
-      fill: true,
-    };
+    output[target] = overlayStyledLine(output[target], width, x, dialogRow);
   }
 
   return output;

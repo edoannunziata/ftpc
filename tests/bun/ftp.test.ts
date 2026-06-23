@@ -6,7 +6,7 @@ import type { Socket } from "node:net";
 import { join } from "node:path";
 import { Duplex } from "node:stream";
 import { tmpdir } from "node:os";
-import { createFtpSocksSocket, FtpClient, type FtpBackend } from "../../src/clients/ftp.ts";
+import { createFtpSocksSocket, FtpClient, patchFtpsUploadSocketEnd, type FtpBackend } from "../../src/clients/ftp.ts";
 import { ListingError, TransferError } from "../../src/errors.ts";
 
 function ftpFile(name: string, type: FileType, size: number, modifiedAt?: Date, rawModifiedAt = ""): FileInfo {
@@ -149,6 +149,8 @@ describe("FtpClient", () => {
       connected = true;
     });
     await once(socket, "connect");
+    expect(socket.remoteAddress).toBe("ftp.example.com");
+    expect(socket.remotePort).toBe(2121);
     socket.write("USER anonymous\r\n");
     inner.send(Buffer.from("220 ready\r\n"));
     const [data] = await once(socket, "data") as [Buffer];
@@ -161,6 +163,58 @@ describe("FtpClient", () => {
     }]);
     expect(inner.writes.map((chunk) => chunk.toString("utf8"))).toEqual(["USER anonymous\r\n"]);
     expect(data.toString("utf8")).toBe("220 ready\r\n");
+  });
+
+  test("waits for the SOCKS5 socket to finish ending before reporting upload data completion", async () => {
+    const inner = new ScriptedSocket();
+    let finishInnerEnd: (() => void) | undefined;
+    inner.end = ((...args: unknown[]) => {
+      finishInnerEnd = args.find((arg): arg is () => void => typeof arg === "function");
+      return inner;
+    }) as typeof inner.end;
+    const socket = createFtpSocksSocket({ host: "proxy.example.com", port: 1080 }, async () => inner as unknown as Socket);
+    let ended = false;
+
+    socket.connect({ host: "ftp.example.com", port: 2121 });
+    await once(socket, "connect");
+    socket.end("payload", () => {
+      ended = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(inner.writes.map((chunk) => chunk.toString("utf8"))).toEqual(["payload"]);
+    expect(ended).toBe(false);
+    expect(finishInnerEnd).toBeInstanceOf(Function);
+    finishInnerEnd?.();
+    await once(socket, "finish");
+    expect(ended).toBe(true);
+  });
+
+  test("uses Bun TLS shutdown for encrypted upload data sockets", async () => {
+    let shutdownCalled = false;
+    const socket = new ScriptedSocket() as ScriptedSocket & {
+      encrypted: boolean;
+      _handle: { shutdown(callback?: () => void): void };
+    };
+    socket.encrypted = true;
+    socket._handle = {
+      shutdown(callback?: () => void): void {
+        shutdownCalled = true;
+        callback?.();
+      },
+    };
+    let ended = false;
+
+    patchFtpsUploadSocketEnd(socket);
+    socket.end("payload", () => {
+      ended = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(socket.writes.map((chunk) => chunk.toString("utf8"))).toEqual(["payload"]);
+    expect(shutdownCalled).toBe(true);
+    expect(ended).toBe(true);
+    expect(socket.destroyed).toBe(false);
   });
 
   test("connects lazily and maps directory listings", async () => {
@@ -188,6 +242,10 @@ describe("FtpClient", () => {
       user: "user",
       password: "secret",
       secure: true,
+      secureOptions: {
+        host: "ftp.example.com",
+        servername: "ftp.example.com",
+      },
     }]);
     expect(backend.listCalls).toEqual(["/pub"]);
     expect(files).toEqual([

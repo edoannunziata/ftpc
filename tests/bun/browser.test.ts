@@ -237,6 +237,12 @@ describe("renderBrowser", () => {
     expect(renderedDownload).toContain("Confirm?");
     expect(renderedDownload).toContain("Download README.md to local directory?");
     expect(renderedDownload).toContain("Confirm? (y/n)");
+    expect(renderedDownload).toContain("┌");
+    expect(renderedDownload).toContain("┐");
+    expect(renderedDownload).toContain("└");
+    expect(renderedDownload).toContain("┘");
+    expect(renderedDownload).toContain("─");
+    expect(renderedDownload).toContain("│");
     expect(renderedDelete).toContain("Delete README.md? This cannot be undone.");
     expect(renderedMkdir).toContain("Create Directory");
     expect(renderedMkdir).toContain("Enter directory name:");
@@ -273,6 +279,24 @@ describe("renderBrowser", () => {
     expect(help).toContain("\x1b[0;1;38;2;255;255;255;44mpress any key to continue");
     expect(help).not.toContain("\x1b[0;1;31m>");
     expect(help).not.toContain("\x1b[0;32m");
+  });
+
+  test("keeps underlying row colors outside dialog overlays", () => {
+    const entries = Array.from({ length: 8 }, (_, index) => ({
+      path: `a${index}`,
+      name: `a${index}`,
+      type: "file" as const,
+    }));
+    const promptState = applyBrowserCommand({
+      ...state,
+      entries,
+      selected: 0,
+    }, "delete").state;
+    const rendered = frameToString(renderBrowserFrame(promptState, { width: 60, height: 10 }, { colors: true }));
+
+    expect(rendered).toContain("\x1b[0;32m   F a1\x1b[0m");
+    expect(rendered).toContain("\x1b[0;1;37m┌");
+    expect(rendered).not.toContain("\x1b[0;1;37m   F a1");
   });
 
   test("serializes exactly the frame height without a scrolling newline", () => {

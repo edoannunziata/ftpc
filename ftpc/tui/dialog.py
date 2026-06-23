@@ -4,6 +4,59 @@ from typing import List, Callable, Any, Optional
 from typing_extensions import Self
 
 
+DIALOG_COLOR_PAIR = 8
+BOX_TOP_LEFT = "┌"
+BOX_TOP_RIGHT = "┐"
+BOX_BOTTOM_LEFT = "└"
+BOX_BOTTOM_RIGHT = "┘"
+BOX_HORIZONTAL = "─"
+BOX_VERTICAL = "│"
+
+
+def _dialog_attr() -> int:
+    try:
+        if curses.has_colors():
+            curses.init_pair(DIALOG_COLOR_PAIR, -1, -1)
+            return curses.color_pair(DIALOG_COLOR_PAIR)
+    except curses.error:
+        pass
+    return 0
+
+
+def _safe_addstr(window: Any, y: int, x: int, text: str, attr: int = 0) -> None:
+    try:
+        window.addstr(y, x, text, attr)
+    except curses.error:
+        pass
+
+
+def _draw_box(window: Any, height: int, width: int, attr: int) -> None:
+    if height < 2 or width < 2:
+        return
+
+    top_line = BOX_TOP_LEFT + (BOX_HORIZONTAL * (width - 2)) + BOX_TOP_RIGHT
+    bottom_line = BOX_BOTTOM_LEFT + (BOX_HORIZONTAL * (width - 2)) + BOX_BOTTOM_RIGHT
+
+    _safe_addstr(window, 0, 0, top_line, attr)
+    for y in range(1, height - 1):
+        _safe_addstr(window, y, 0, BOX_VERTICAL, attr)
+        _safe_addstr(window, y, width - 1, BOX_VERTICAL, attr)
+    _safe_addstr(window, height - 1, 0, bottom_line, attr)
+
+
+def _create_dialog_window(
+    height: int, width: int, y: int, x: int
+) -> tuple[Any, int]:
+    dialog = curses.newwin(height, width, y, x)
+    attr = _dialog_attr()
+    try:
+        dialog.bkgd(" ", attr)
+    except curses.error:
+        pass
+    _draw_box(dialog, height, width, attr)
+    return dialog, attr
+
+
 def init_dialog_box(
     stdscr: Any,
     title: str,
@@ -22,23 +75,24 @@ def init_dialog_box(
     dialog_x = (width - dialog_width) // 2
 
     # Create dialog window
-    dialog = curses.newwin(dialog_height, dialog_width, dialog_y, dialog_x)
-    dialog.box()
+    dialog, dialog_attr = _create_dialog_window(
+        dialog_height, dialog_width, dialog_y, dialog_x
+    )
 
     # Add title
     title = title[: dialog_width - 4]  # Truncate if too long
     title_x = (dialog_width - len(title)) // 2
-    dialog.addstr(0, title_x, title)
+    _safe_addstr(dialog, 0, title_x, title, dialog_attr)
 
     # Add content
     for i, line in enumerate(content):
         if i >= dialog_height - 2:  # Reserve bottom line for prompt
             break
         line = line[: dialog_width - 4]  # Truncate if too long
-        dialog.addstr(i + 1, 2, line)
+        _safe_addstr(dialog, i + 1, 2, line, dialog_attr)
 
     # Add prompt
-    dialog.addstr(dialog_height - 2, 2, prompt)
+    _safe_addstr(dialog, dialog_height - 2, 2, prompt, dialog_attr)
 
     dialog.refresh()
 
@@ -87,25 +141,26 @@ def show_input_dialog(
     dialog_x = (width - dialog_width) // 2
 
     # Create dialog window
-    dialog = curses.newwin(dialog_height, dialog_width, dialog_y, dialog_x)
-    dialog.box()
+    dialog, dialog_attr = _create_dialog_window(
+        dialog_height, dialog_width, dialog_y, dialog_x
+    )
 
     # Add title
     title = title[: dialog_width - 4]  # Truncate if too long
     title_x = (dialog_width - len(title)) // 2
-    dialog.addstr(0, title_x, title)
+    _safe_addstr(dialog, 0, title_x, title, dialog_attr)
 
     # Add prompt
-    dialog.addstr(1, 2, prompt)
+    _safe_addstr(dialog, 1, 2, prompt, dialog_attr)
 
     # Add input field indicator
     input_y = 2
     input_x = 2
     input_width = dialog_width - 4
-    dialog.addstr(input_y, input_x, ">" + " " * (input_width - 1))
+    _safe_addstr(dialog, input_y, input_x, ">" + " " * (input_width - 1), dialog_attr)
 
     # Add instructions
-    dialog.addstr(4, 2, "Enter to confirm, Esc to cancel")
+    _safe_addstr(dialog, 4, 2, "Enter to confirm, Esc to cancel", dialog_attr)
 
     dialog.refresh()
 
@@ -142,14 +197,32 @@ def show_input_dialog(
                 if input_text:
                     input_text = input_text[:-1]
                     # Clear and redraw input field
-                    dialog.addstr(input_y, input_x, ">" + " " * (input_width - 1))
-                    dialog.addstr(input_y, input_x + 1, input_text[: input_width - 2])
+                    _safe_addstr(
+                        dialog,
+                        input_y,
+                        input_x,
+                        ">" + " " * (input_width - 1),
+                        dialog_attr,
+                    )
+                    _safe_addstr(
+                        dialog,
+                        input_y,
+                        input_x + 1,
+                        input_text[: input_width - 2],
+                        dialog_attr,
+                    )
 
             # Add printable characters
             elif len(key) == 1 and ord(key) >= 32:
                 if len(input_text) < input_width - 3:  # Leave room for cursor
                     input_text += key
-                    dialog.addstr(input_y, input_x + 1, input_text[: input_width - 2])
+                    _safe_addstr(
+                        dialog,
+                        input_y,
+                        input_x + 1,
+                        input_text[: input_width - 2],
+                        dialog_attr,
+                    )
 
         except curses.error:
             pass
@@ -212,6 +285,7 @@ class ProgressDialog:
         self.width = 0
         self.height = 0
         self.progress_width = 0
+        self.dialog_attr = 0
         self.canceled = False
 
     def _create_dialog(self) -> None:
@@ -231,29 +305,30 @@ class ProgressDialog:
         self.progress_width = dialog_width - 11  # Width of the progress bar
 
         # Create dialog window
-        self.dialog = curses.newwin(dialog_height, dialog_width, dialog_y, dialog_x)
-        self.dialog.box()
+        self.dialog, self.dialog_attr = _create_dialog_window(
+            dialog_height, dialog_width, dialog_y, dialog_x
+        )
 
         # Add title
         title = self.title[: dialog_width - 4]  # Truncate if too long
         title_x = (dialog_width - len(title)) // 2
-        self.dialog.addstr(0, title_x, title)
+        _safe_addstr(self.dialog, 0, title_x, title, self.dialog_attr)
 
         # Add file name
         file_info = f"File: {self.file_name}"
         if len(file_info) > dialog_width - 4:
             file_info = file_info[: dialog_width - 7] + "..."
-        self.dialog.addstr(1, 2, file_info)
+        _safe_addstr(self.dialog, 1, 2, file_info, self.dialog_attr)
 
         # Add size info
         size_info = f"Size: {self._format_size(self.total_size)}"
-        self.dialog.addstr(2, 2, size_info)
+        _safe_addstr(self.dialog, 2, 2, size_info, self.dialog_attr)
 
         # Initialize progress bar (empty)
         self._draw_progress_bar(0)
 
         # Add cancel instruction
-        self.dialog.addstr(5, 2, "Press 'q' to cancel")
+        _safe_addstr(self.dialog, 5, 2, "Press 'q' to cancel", self.dialog_attr)
 
         # Refresh the dialog
         self.dialog.refresh()
@@ -272,25 +347,35 @@ class ProgressDialog:
     def _draw_progress_bar(self, percentage: float) -> None:
         """Draw the progress bar with the given percentage."""
         # Clear the line
-        self.dialog.addstr(3, 2, " " * (self.width - 4))
+        _safe_addstr(self.dialog, 3, 2, " " * (self.width - 4), self.dialog_attr)
 
         # Calculate the number of filled blocks
         filled_width = int(self.progress_width * percentage / 100)
 
         # Draw progress bar container
-        self.dialog.addstr(3, 2, "[" + " " * self.progress_width + "]")
+        _safe_addstr(
+            self.dialog, 3, 2, "[" + " " * self.progress_width + "]", self.dialog_attr
+        )
 
         # Fill in the progress
         for i in range(filled_width):
-            self.dialog.addstr(3, 3 + i, "█")
+            _safe_addstr(self.dialog, 3, 3 + i, "█", self.dialog_attr)
 
         # Draw percentage
         percentage_str = f" {percentage:.0f}%"
-        self.dialog.addstr(3, 4 + self.progress_width, percentage_str)
+        _safe_addstr(
+            self.dialog, 3, 4 + self.progress_width, percentage_str, self.dialog_attr
+        )
 
         # Draw transfer speed and ETA on line 4
         if percentage > 0:
-            self.dialog.addstr(4, 2, f"Transferred: {self._format_size(self.current)}")
+            _safe_addstr(
+                self.dialog,
+                4,
+                2,
+                f"Transferred: {self._format_size(self.current)}",
+                self.dialog_attr,
+            )
 
         # Refresh the dialog
         self.dialog.refresh()

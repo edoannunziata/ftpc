@@ -137,6 +137,10 @@ describe("Storage", () => {
       user: "me",
       password: "secret",
       secure: true,
+      secureOptions: {
+        host: "ftp.example.com",
+        servername: "ftp.example.com",
+      },
     }]);
     expect(ftpListCalls).toEqual(["/pub"]);
 
@@ -426,6 +430,10 @@ describe("Storage", () => {
       user: "user",
       password: "secret",
       secure: true,
+      secureOptions: {
+        host: "example.com",
+        servername: "example.com",
+      },
     }]);
     expect(listCalls).toEqual(["/base"]);
   });

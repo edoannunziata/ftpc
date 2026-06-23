@@ -1,7 +1,10 @@
 import { Client as BasicFtpClient } from "basic-ftp";
 import type { FileInfo } from "basic-ftp";
+import { once } from "node:events";
+import { closeSync, openSync, readSync } from "node:fs";
 import type { Socket } from "node:net";
 import { Duplex } from "node:stream";
+import type { ConnectionOptions as TlsConnectionOptions } from "node:tls";
 import type { ProxyConfig } from "../config.ts";
 import { baseName, normalizeRemotePath } from "../paths.ts";
 import { connectSocks5, type Socks5Connector } from "../socks5.ts";
@@ -16,6 +19,7 @@ export interface FtpBackend {
     user?: string;
     password?: string;
     secure?: boolean | "implicit";
+    secureOptions?: TlsConnectionOptions;
   }): Promise<unknown>;
   list(path?: string): Promise<FileInfo[]>;
   downloadTo(localPath: string, remotePath: string): Promise<unknown>;
@@ -49,6 +53,8 @@ class FtpSocksSocket extends Duplex {
   private inner: Socket | undefined;
   private keepAlive: { enable?: boolean; initialDelay?: number } | undefined;
   private timeout: { timeout: number; callback?: () => void } | undefined;
+  private targetHost: string | undefined;
+  private targetPort: number | undefined;
 
   constructor(
     private readonly proxy: ProxyConfig,
@@ -58,11 +64,11 @@ class FtpSocksSocket extends Duplex {
   }
 
   get remoteAddress(): string | undefined {
-    return this.inner?.remoteAddress;
+    return this.targetHost ?? this.inner?.remoteAddress;
   }
 
   get remotePort(): number | undefined {
-    return this.inner?.remotePort;
+    return this.targetPort ?? this.inner?.remotePort;
   }
 
   get remoteFamily(): string | undefined {
@@ -84,6 +90,8 @@ class FtpSocksSocket extends Duplex {
   connect(options: SocketConnectOptions, callback?: () => void): this {
     const targetHost = options.host ?? "localhost";
     const targetPort = options.port ?? 21;
+    this.targetHost = targetHost;
+    this.targetPort = targetPort;
 
     void this.connector({
       proxy: this.proxy,
@@ -129,8 +137,11 @@ class FtpSocksSocket extends Duplex {
   }
 
   override _final(callback: (error?: Error | null) => void): void {
-    this.inner?.end();
-    callback();
+    if (this.inner === undefined) {
+      callback();
+      return;
+    }
+    this.inner.end(callback);
   }
 
   override _destroy(error: Error | null, callback: (error?: Error | null) => void): void {
@@ -169,8 +180,231 @@ export function createFtpSocksSocket(proxy: ProxyConfig, connector: Socks5Connec
   return new FtpSocksSocket(proxy, connector) as unknown as Socket;
 }
 
+type SocketEnd = (...args: unknown[]) => unknown;
+type BunTlsHandle = {
+  shutdown?: (callback?: () => void) => void;
+};
+type FtpTask = {
+  resolve(value: unknown): void;
+  reject(error: Error): void;
+};
+type FtpResponse = {
+  code: number;
+  message: string;
+};
+type BasicFtpInternals = BasicFtpClient & {
+  protectWhitespace(path: string): Promise<string>;
+  _progressTracker?: {
+    start(socket: Socket, name: string, type: "upload"): void;
+    updateAndStop(): void;
+    stop(): void;
+  };
+};
+
+function splitEndArgs(args: unknown[]): { chunk?: unknown; encoding?: unknown; callback?: () => void } {
+  const callback = typeof args.at(-1) === "function" ? args.pop() as () => void : undefined;
+  return {
+    chunk: args[0],
+    encoding: args[1],
+    callback,
+  };
+}
+
+export function patchFtpsUploadSocketEnd(socket: unknown): void {
+  if (socket === undefined || socket === null || typeof socket !== "object" || !("encrypted" in socket)) {
+    return;
+  }
+
+  const dataSocket = socket as Socket & { encrypted?: boolean };
+  if (dataSocket.encrypted !== true) {
+    return;
+  }
+
+  const handle = (dataSocket as unknown as { _handle?: BunTlsHandle })._handle;
+  if (typeof handle?.shutdown !== "function") {
+    return;
+  }
+
+  (dataSocket as unknown as { end: SocketEnd }).end = (...args: unknown[]): unknown => {
+    const { chunk, encoding, callback } = splitEndArgs([...args]);
+    const shutdown = (): void => {
+      handle.shutdown?.();
+      callback?.();
+    };
+
+    if (chunk !== undefined) {
+      if (typeof encoding === "string") {
+        dataSocket.write(chunk as string | Uint8Array, encoding as BufferEncoding, shutdown);
+      } else {
+        dataSocket.write(chunk as string | Uint8Array, shutdown);
+      }
+      return dataSocket;
+    }
+
+    shutdown();
+    return dataSocket;
+  };
+}
+
+async function waitForSecureUploadSocket(dataSocket: Socket): Promise<void> {
+  const getCipher = (dataSocket as Socket & { getCipher?: () => unknown }).getCipher;
+  if (typeof getCipher !== "function" || getCipher.call(dataSocket) !== undefined) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = (): void => {
+      dataSocket.off("secureConnect", onSecureConnect);
+      dataSocket.off("error", onError);
+      dataSocket.off("close", onClose);
+    };
+    const onSecureConnect = (): void => {
+      cleanup();
+      resolve();
+    };
+    const onError = (error: Error): void => {
+      cleanup();
+      reject(error);
+    };
+    const onClose = (): void => {
+      cleanup();
+      reject(new Error("Data socket closed before TLS was established."));
+    };
+
+    dataSocket.once("secureConnect", onSecureConnect);
+    dataSocket.once("error", onError);
+    dataSocket.once("close", onClose);
+  });
+}
+
+async function prepareFtpsUploadTransfer(backend: BasicFtpInternals): Promise<void> {
+  const tlsOptions = backend.ftp.tlsOptions as TlsConnectionOptions;
+  const originalCheckServerIdentity = tlsOptions.checkServerIdentity;
+  // Bun validates FTPS passive data sockets against the TCP peer when wrapping
+  // an existing socket; the control socket has already verified the host.
+  tlsOptions.checkServerIdentity = () => undefined;
+  try {
+    await backend.prepareTransfer(backend.ftp);
+  } finally {
+    if (originalCheckServerIdentity === undefined) {
+      delete tlsOptions.checkServerIdentity;
+    } else {
+      tlsOptions.checkServerIdentity = originalCheckServerIdentity;
+    }
+  }
+}
+
+async function writeFileToSocket(localPath: string, dataSocket: Socket): Promise<void> {
+  const fd = openSync(localPath, "r");
+  const buffer = Buffer.allocUnsafe(64 * 1024);
+  try {
+    let bytesRead = 0;
+    while ((bytesRead = readSync(fd, buffer, 0, buffer.length, null)) > 0) {
+      const chunk = Buffer.from(buffer.subarray(0, bytesRead));
+      if (!dataSocket.write(chunk)) {
+        await once(dataSocket, "drain");
+      }
+    }
+  } finally {
+    closeSync(fd);
+  }
+}
+
+async function finishUploadDataSocket(dataSocket: Socket): Promise<void> {
+  patchFtpsUploadSocketEnd(dataSocket);
+  await new Promise<void>((resolve) => {
+    dataSocket.end(resolve);
+  });
+}
+
+async function uploadLocalFileWithPreparedTransfer(backend: BasicFtpInternals, localPath: string, remotePath: string): Promise<unknown> {
+  const validPath = await backend.protectWhitespace(remotePath);
+  await prepareFtpsUploadTransfer(backend);
+  const dataSocket = backend.ftp.dataSocket;
+  if (dataSocket === undefined) {
+    throw new Error("Upload will be initiated but no data connection is available.");
+  }
+
+  let task: FtpTask | undefined;
+  let controlResponse: FtpResponse | undefined;
+  let dataDone = false;
+  let settled = false;
+
+  const reject = (error: Error): void => {
+    if (settled || task === undefined) {
+      return;
+    }
+    settled = true;
+    backend._progressTracker?.stop();
+    backend.ftp.socket.setTimeout(backend.ftp.timeout);
+    backend.ftp.dataSocket = undefined;
+    task.reject(error);
+  };
+
+  const maybeResolve = (): void => {
+    if (settled || task === undefined || controlResponse === undefined || !dataDone) {
+      return;
+    }
+    settled = true;
+    backend.ftp.dataSocket = undefined;
+    task.resolve(controlResponse);
+  };
+
+  const uploadData = async (): Promise<void> => {
+    try {
+      await waitForSecureUploadSocket(dataSocket);
+      backend.ftp.socket.setTimeout(0);
+      dataSocket.setTimeout(backend.ftp.timeout);
+      backend._progressTracker?.start(dataSocket, validPath, "upload");
+      await writeFileToSocket(localPath, dataSocket);
+      await finishUploadDataSocket(dataSocket);
+      backend._progressTracker?.updateAndStop();
+      backend.ftp.socket.setTimeout(backend.ftp.timeout);
+      dataSocket.setTimeout(0);
+      dataDone = true;
+      maybeResolve();
+    } catch (error) {
+      reject(error as Error);
+    }
+  };
+
+  return backend.ftp.handle(`STOR ${validPath}`, (response, ftpTask) => {
+    task = ftpTask;
+    if (response instanceof Error) {
+      reject(response);
+      return;
+    }
+    if (response.code === 125 || response.code === 150) {
+      void uploadData();
+      return;
+    }
+    if (response.code >= 200 && response.code < 300) {
+      controlResponse = response;
+      maybeResolve();
+      return;
+    }
+    if (response.code >= 300) {
+      reject(new Error(response.message));
+    }
+  });
+}
+
+function patchBasicFtpUpload(backend: BasicFtpClient): void {
+  const originalUploadFrom = backend.uploadFrom.bind(backend);
+  backend.uploadFrom = (async (...args: Parameters<BasicFtpClient["uploadFrom"]>) => {
+    const [source, remotePath] = args;
+    if (typeof source === "string" && typeof remotePath === "string" && backend.ftp.hasTLS) {
+      return uploadLocalFileWithPreparedTransfer(backend as BasicFtpInternals, source, remotePath);
+    }
+    return originalUploadFrom(...args);
+  }) as BasicFtpClient["uploadFrom"];
+}
+
 function createBasicFtpBackend(proxy?: ProxyConfig, proxyConnector?: Socks5Connector): FtpBackend {
-  const backend = new BasicFtpClient(FTP_TIMEOUT_MS);
+  const backend = new BasicFtpClient(FTP_TIMEOUT_MS, proxy === undefined ? undefined : {
+    allowSeparateTransferHost: true,
+  });
+  patchBasicFtpUpload(backend);
   if (proxy !== undefined) {
     backend.ftp._newSocket = () => createFtpSocksSocket(proxy, proxyConnector);
   }
@@ -385,6 +619,10 @@ export class FtpClient implements StorageClient {
       user: this.username,
       password: this.password,
       secure: this.tls,
+      secureOptions: this.tls ? {
+        host: this.host,
+        servername: this.host,
+      } : undefined,
     });
     preferPlainListFallback(this.backend);
     this.connected = true;
