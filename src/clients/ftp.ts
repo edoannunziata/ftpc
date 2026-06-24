@@ -200,6 +200,13 @@ type BasicFtpInternals = BasicFtpClient & {
     stop(): void;
   };
 };
+const ftpsUploadSocketPatch = Symbol("ftpc.ftpsUploadSocketPatch");
+type PatchedFtpUploadSocket = Socket & {
+  encrypted?: boolean;
+  _handle?: BunTlsHandle;
+  [ftpsUploadSocketPatch]?: true;
+  write: (...args: unknown[]) => boolean;
+};
 
 function splitEndArgs(args: unknown[]): { chunk?: unknown; encoding?: unknown; callback?: () => void } {
   const callback = typeof args.at(-1) === "function" ? args.pop() as () => void : undefined;
@@ -215,30 +222,66 @@ export function patchFtpsUploadSocketEnd(socket: unknown): void {
     return;
   }
 
-  const dataSocket = socket as Socket & { encrypted?: boolean };
+  const dataSocket = socket as PatchedFtpUploadSocket;
   if (dataSocket.encrypted !== true) {
     return;
   }
 
-  const handle = (dataSocket as unknown as { _handle?: BunTlsHandle })._handle;
+  if (dataSocket[ftpsUploadSocketPatch] === true) {
+    return;
+  }
+
+  const handle = dataSocket._handle;
   if (typeof handle?.shutdown !== "function") {
     return;
   }
 
+  dataSocket[ftpsUploadSocketPatch] = true;
+  const originalWrite = dataSocket.write.bind(dataSocket);
+  const originalEnd = dataSocket.end.bind(dataSocket) as SocketEnd;
+  let pendingWrites = 0;
+  let endRequested = false;
+  let endCallback: (() => void) | undefined;
+  let shutdownStarted = false;
+
+  const shutdown = (): void => {
+    if (!endRequested || pendingWrites > 0 || shutdownStarted) {
+      return;
+    }
+    shutdownStarted = true;
+    handle.shutdown?.();
+    originalEnd(() => {
+      endCallback?.();
+    });
+  };
+
+  dataSocket.write = (...args: unknown[]): boolean => {
+    const callback = typeof args.at(-1) === "function" ? args.pop() as (error?: Error | null) => void : undefined;
+    pendingWrites += 1;
+    try {
+      return originalWrite(...args, (error?: Error | null) => {
+        pendingWrites -= 1;
+        callback?.(error);
+        shutdown();
+      });
+    } catch (error) {
+      pendingWrites -= 1;
+      shutdown();
+      throw error;
+    }
+  };
+
   (dataSocket as unknown as { end: SocketEnd }).end = (...args: unknown[]): unknown => {
     const { chunk, encoding, callback } = splitEndArgs([...args]);
-    const shutdown = (): void => {
-      handle.shutdown?.();
-      callback?.();
-    };
+    endRequested = true;
+    endCallback = callback;
 
     if (chunk !== undefined) {
       if (typeof encoding === "string") {
-        dataSocket.write(chunk as string | Uint8Array, encoding as BufferEncoding, shutdown);
+        dataSocket.write(chunk as string | Uint8Array, encoding as BufferEncoding);
       } else {
-        dataSocket.write(chunk as string | Uint8Array, shutdown);
+        dataSocket.write(chunk as string | Uint8Array);
       }
-      return dataSocket;
     }
 
     shutdown();
@@ -353,6 +396,7 @@ async function uploadLocalFileWithPreparedTransfer(backend: BasicFtpInternals, l
   const uploadData = async (): Promise<void> => {
     try {
       await waitForSecureUploadSocket(dataSocket);
+      patchFtpsUploadSocketEnd(dataSocket);
       backend.ftp.socket.setTimeout(0);
       dataSocket.setTimeout(backend.ftp.timeout);
       backend._progressTracker?.start(dataSocket, validPath, "upload");

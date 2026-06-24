@@ -217,6 +217,52 @@ describe("FtpClient", () => {
     expect(socket.destroyed).toBe(false);
   });
 
+  test("waits for pending encrypted upload writes before Bun TLS shutdown", async () => {
+    let shutdownCalled = false;
+    let finishWrite: (() => void) | undefined;
+    const socket = new ScriptedSocket() as ScriptedSocket & {
+      encrypted: boolean;
+      _handle: { shutdown(callback?: () => void): void };
+    };
+    socket.encrypted = true;
+    socket._handle = {
+      shutdown(callback?: () => void): void {
+        shutdownCalled = true;
+        callback?.();
+      },
+    };
+    socket.write = ((chunk: Uint8Array | string, ...args: unknown[]) => {
+      const callback = args.find((arg): arg is () => void => typeof arg === "function");
+      socket.writes.push(Buffer.from(chunk));
+      finishWrite = callback;
+      return true;
+    }) as typeof socket.write;
+    const originalEnd = socket.end.bind(socket);
+    let originalEndCalled = false;
+    socket.end = ((...args: Parameters<typeof socket.end>) => {
+      originalEndCalled = true;
+      return originalEnd(...args);
+    }) as typeof socket.end;
+    let ended = false;
+
+    patchFtpsUploadSocketEnd(socket);
+    socket.write("payload");
+    socket.end(() => {
+      ended = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(socket.writes.map((chunk) => chunk.toString("utf8"))).toEqual(["payload"]);
+    expect(shutdownCalled).toBe(false);
+    expect(originalEndCalled).toBe(false);
+    expect(ended).toBe(false);
+    finishWrite?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(shutdownCalled).toBe(true);
+    expect(originalEndCalled).toBe(true);
+    expect(ended).toBe(true);
+  });
+
   test("connects lazily and maps directory listings", async () => {
     const modifiedAt = new Date("2026-06-20T12:00:00.000Z");
     const backend = new FakeFtpBackend([
