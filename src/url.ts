@@ -31,11 +31,14 @@ export function parseStorageUrl(input: string): ParsedStorageUrl {
   try {
     parsed = new URL(input);
   } catch (error) {
-    throw new TypeError(`Invalid storage URL '${input}': ${(error as Error).message}`);
+    throw new TypeError(
+      `Invalid storage URL '${input}': ${(error as Error).message}`,
+    );
   }
 
   const protocol = parsed.protocol.replace(/:$/, "").toLowerCase();
-  const port = parsed.port === "" ? undefined : Number.parseInt(parsed.port, 10);
+  const port =
+    parsed.port === "" ? undefined : Number.parseInt(parsed.port, 10);
 
   return {
     protocol,

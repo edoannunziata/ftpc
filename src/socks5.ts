@@ -19,13 +19,18 @@ export interface Socks5ConnectOptions {
   socketFactory?: (proxy: ProxyConfig) => Socket;
 }
 
-export type Socks5Connector = (options: Socks5ConnectOptions) => Promise<Socket>;
+export type Socks5Connector = (
+  options: Socks5ConnectOptions,
+) => Promise<Socket>;
 
 class SocketReader {
   private readonly chunks: Buffer[] = [];
   private length = 0;
   private error: Error | undefined;
-  private readonly waiters: Array<{ resolve: () => void; reject: (error: Error) => void }> = [];
+  private readonly waiters: Array<{
+    resolve: () => void;
+    reject: (error: Error) => void;
+  }> = [];
 
   constructor(private readonly socket: Socket) {
     this.socket.on("data", this.onData);
@@ -123,11 +128,16 @@ function validateByteLength(label: string, value: string): Buffer {
 
 function validatePort(port: number): void {
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error(`SOCKS5 target port must be an integer between 1 and 65535`);
+    throw new Error(
+      `SOCKS5 target port must be an integer between 1 and 65535`,
+    );
   }
 }
 
-function waitForSocketConnect(socket: Socket, timeoutMs: number): Promise<void> {
+function waitForSocketConnect(
+  socket: Socket,
+  timeoutMs: number,
+): Promise<void> {
   if (socket.readyState === "open") {
     return Promise.resolve();
   }
@@ -135,7 +145,9 @@ function waitForSocketConnect(socket: Socket, timeoutMs: number): Promise<void> 
   return new Promise((resolve, reject) => {
     let settled = false;
     const timeout = setTimeout(() => {
-      fail(new Error(`Timed out connecting to SOCKS5 proxy after ${timeoutMs}ms`));
+      fail(
+        new Error(`Timed out connecting to SOCKS5 proxy after ${timeoutMs}ms`),
+      );
     }, timeoutMs);
 
     const cleanup = (): void => {
@@ -189,8 +201,13 @@ function socksReplyMessage(code: number): string {
   }
 }
 
-async function authenticate(socket: Socket, reader: SocketReader, proxy: ProxyConfig): Promise<void> {
-  const hasCredentials = proxy.username !== undefined || proxy.password !== undefined;
+async function authenticate(
+  socket: Socket,
+  reader: SocketReader,
+  proxy: ProxyConfig,
+): Promise<void> {
+  const hasCredentials =
+    proxy.username !== undefined || proxy.password !== undefined;
   const methods = hasCredentials
     ? [NO_AUTHENTICATION, USERNAME_PASSWORD]
     : [NO_AUTHENTICATION];
@@ -198,7 +215,9 @@ async function authenticate(socket: Socket, reader: SocketReader, proxy: ProxyCo
   socket.write(Buffer.from([SOCKS_VERSION, methods.length, ...methods]));
   const methodSelection = await reader.readExactly(2);
   if (methodSelection[0] !== SOCKS_VERSION) {
-    throw new Error(`Invalid SOCKS version ${methodSelection[0]} in authentication response`);
+    throw new Error(
+      `Invalid SOCKS version ${methodSelection[0]} in authentication response`,
+    );
   }
   if (methodSelection[1] === NO_ACCEPTABLE_METHODS) {
     throw new Error("SOCKS5 proxy did not accept any authentication method");
@@ -207,17 +226,21 @@ async function authenticate(socket: Socket, reader: SocketReader, proxy: ProxyCo
     return;
   }
   if (methodSelection[1] !== USERNAME_PASSWORD) {
-    throw new Error(`SOCKS5 proxy selected unsupported authentication method ${methodSelection[1]}`);
+    throw new Error(
+      `SOCKS5 proxy selected unsupported authentication method ${methodSelection[1]}`,
+    );
   }
 
   const username = validateByteLength("SOCKS5 username", proxy.username ?? "");
   const password = validateByteLength("SOCKS5 password", proxy.password ?? "");
-  socket.write(Buffer.concat([
-    Buffer.from([0x01, username.length]),
-    username,
-    Buffer.from([password.length]),
-    password,
-  ]));
+  socket.write(
+    Buffer.concat([
+      Buffer.from([0x01, username.length]),
+      username,
+      Buffer.from([password.length]),
+      password,
+    ]),
+  );
 
   const authResponse = await reader.readExactly(2);
   if (authResponse[0] !== 0x01 || authResponse[1] !== 0x00) {
@@ -225,48 +248,80 @@ async function authenticate(socket: Socket, reader: SocketReader, proxy: ProxyCo
   }
 }
 
-async function connectTarget(socket: Socket, reader: SocketReader, targetHost: string, targetPort: number): Promise<void> {
+async function connectTarget(
+  socket: Socket,
+  reader: SocketReader,
+  targetHost: string,
+  targetPort: number,
+): Promise<void> {
   const host = validateByteLength("SOCKS5 target host", targetHost);
   const port = Buffer.allocUnsafe(2);
   port.writeUInt16BE(targetPort, 0);
 
-  socket.write(Buffer.concat([
-    Buffer.from([SOCKS_VERSION, CONNECT_COMMAND, RESERVED, DOMAIN_NAME, host.length]),
-    host,
-    port,
-  ]));
+  socket.write(
+    Buffer.concat([
+      Buffer.from([
+        SOCKS_VERSION,
+        CONNECT_COMMAND,
+        RESERVED,
+        DOMAIN_NAME,
+        host.length,
+      ]),
+      host,
+      port,
+    ]),
+  );
 
   const response = await reader.readExactly(4);
-  if (response[0] !== SOCKS_VERSION) {
-    throw new Error(`Invalid SOCKS version ${response[0]} in connect response`);
+  const version = response[0];
+  const reply = response[1];
+  const addressType = response[3];
+  if (
+    version === undefined ||
+    reply === undefined ||
+    addressType === undefined
+  ) {
+    throw new Error("Invalid SOCKS5 connect response");
   }
-  if (response[1] !== 0x00) {
-    throw new Error(`SOCKS5 connect failed: ${socksReplyMessage(response[1])}`);
+  if (version !== SOCKS_VERSION) {
+    throw new Error(`Invalid SOCKS version ${version} in connect response`);
+  }
+  if (reply !== 0x00) {
+    throw new Error(`SOCKS5 connect failed: ${socksReplyMessage(reply)}`);
   }
 
-  switch (response[3]) {
+  switch (addressType) {
     case IPV4_ADDRESS:
       await reader.readExactly(4 + 2);
       break;
     case DOMAIN_NAME: {
       const length = await reader.readExactly(1);
-      await reader.readExactly(length[0] + 2);
+      const domainLength = length[0];
+      if (domainLength === undefined) {
+        throw new Error("Invalid SOCKS5 domain length");
+      }
+      await reader.readExactly(domainLength + 2);
       break;
     }
     case IPV6_ADDRESS:
       await reader.readExactly(16 + 2);
       break;
     default:
-      throw new Error(`SOCKS5 proxy returned unsupported address type ${response[3]}`);
+      throw new Error(
+        `SOCKS5 proxy returned unsupported address type ${addressType}`,
+      );
   }
 }
 
-export async function connectSocks5(options: Socks5ConnectOptions): Promise<Socket> {
+export async function connectSocks5(
+  options: Socks5ConnectOptions,
+): Promise<Socket> {
   validatePort(options.targetPort);
 
   const timeoutMs = options.timeoutMs ?? 5000;
-  const socket = options.socketFactory?.(options.proxy)
-    ?? connectSocket({ host: options.proxy.host, port: options.proxy.port });
+  const socket =
+    options.socketFactory?.(options.proxy) ??
+    connectSocket({ host: options.proxy.host, port: options.proxy.port });
   let reader: SocketReader | undefined;
 
   try {

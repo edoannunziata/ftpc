@@ -4,7 +4,11 @@ import {
 } from "@azure/storage-file-datalake";
 import { DefaultAzureCredential } from "@azure/identity";
 import { baseName, normalizeRemotePath, stripLeadingSlash } from "../paths.ts";
-import type { FileDescriptor, StorageClient, TransferOptions } from "../types.ts";
+import type {
+  FileDescriptor,
+  StorageClient,
+  TransferOptions,
+} from "../types.ts";
 import { ListingError, TransferError } from "../errors.ts";
 
 export interface AzureDataLakePathItem {
@@ -20,10 +24,21 @@ interface AzureDataLakeProgressOptions {
 }
 
 export interface AzureDataLakeBackend {
-  listPaths(options?: { path?: string; recursive?: boolean }): AsyncIterable<AzureDataLakePathItem>;
+  listPaths(options?: {
+    path?: string;
+    recursive?: boolean;
+  }): AsyncIterable<AzureDataLakePathItem>;
   getFileClient(path: string): {
-    readToFile(localPath: string, offset?: number, count?: number, options?: AzureDataLakeProgressOptions): Promise<unknown>;
-    uploadFile(localPath: string, options?: AzureDataLakeProgressOptions): Promise<unknown>;
+    readToFile(
+      localPath: string,
+      offset?: number,
+      count?: number,
+      options?: AzureDataLakeProgressOptions,
+    ): Promise<unknown>;
+    uploadFile(
+      localPath: string,
+      options?: AzureDataLakeProgressOptions,
+    ): Promise<unknown>;
     delete(): Promise<unknown>;
   };
   getDirectoryClient(path: string): {
@@ -55,29 +70,40 @@ function normalizeAccountUrl(input: string): string {
 
 function accountNameFromUrl(accountUrl: string): string {
   const url = new URL(accountUrl);
-  if ((url.hostname === "localhost" || url.hostname === "127.0.0.1") && url.pathname !== "") {
+  if (
+    (url.hostname === "localhost" || url.hostname === "127.0.0.1") &&
+    url.pathname !== ""
+  ) {
     const [accountName] = stripLeadingSlash(url.pathname).split("/");
-    if (accountName !== "") {
+    if (accountName !== undefined && accountName !== "") {
       return accountName;
     }
   }
-  return url.hostname.split(".")[0] ?? url.hostname;
+  const [accountName = url.hostname] = url.hostname.split(".");
+  return accountName;
 }
 
-function createAzureDataLakeBackend(options: AzureDataLakeClientOptions): AzureDataLakeBackend {
+function createAzureDataLakeBackend(
+  options: AzureDataLakeClientOptions,
+): AzureDataLakeBackend {
   if (options.connectionString !== undefined) {
-    return DataLakeServiceClient
-      .fromConnectionString(options.connectionString)
-      .getFileSystemClient(options.filesystemName) as AzureDataLakeBackend;
+    return DataLakeServiceClient.fromConnectionString(
+      options.connectionString,
+    ).getFileSystemClient(options.filesystemName) as AzureDataLakeBackend;
   }
 
   const accountUrl = normalizeAccountUrl(options.accountUrl);
-  const credential = options.accountKey === undefined
-    ? new DefaultAzureCredential()
-    : new StorageSharedKeyCredential(accountNameFromUrl(accountUrl), options.accountKey);
+  const credential =
+    options.accountKey === undefined
+      ? new DefaultAzureCredential()
+      : new StorageSharedKeyCredential(
+          accountNameFromUrl(accountUrl),
+          options.accountKey,
+        );
 
-  return new DataLakeServiceClient(accountUrl, credential)
-    .getFileSystemClient(options.filesystemName) as AzureDataLakeBackend;
+  return new DataLakeServiceClient(accountUrl, credential).getFileSystemClient(
+    options.filesystemName,
+  ) as AzureDataLakeBackend;
 }
 
 function formatDataLakePath(path: string): string {
@@ -101,10 +127,13 @@ function relativePath(listedPath: string, listedDirectory: string): string {
   return stripLeadingSlash(listedPath.slice(listedDirectory.length));
 }
 
-function transferProgress(options: TransferOptions): AzureDataLakeProgressOptions {
+function transferProgress(
+  options: TransferOptions,
+): AzureDataLakeProgressOptions {
   return {
     abortSignal: options.signal,
-    onProgress: (progress) => options.onProgress?.({ bytes: progress.loadedBytes }),
+    onProgress: (progress) =>
+      options.onProgress?.({ bytes: progress.loadedBytes }),
   };
 }
 
@@ -130,7 +159,10 @@ export class AzureDataLakeClient implements StorageClient {
     const results: FileDescriptor[] = [];
 
     try {
-      for await (const item of this.backend.listPaths({ path: directory, recursive: false })) {
+      for await (const item of this.backend.listPaths({
+        path: directory,
+        recursive: false,
+      })) {
         if (item.name === undefined) {
           continue;
         }
@@ -150,27 +182,48 @@ export class AzureDataLakeClient implements StorageClient {
         });
       }
     } catch (error) {
-      throw new ListingError(`Failed to list directory '${path}' in Azure Data Lake filesystem '${this.filesystemName}': ${(error as Error).message}`, { cause: error });
+      throw new ListingError(
+        `Failed to list directory '${path}' in Azure Data Lake filesystem '${this.filesystemName}': ${(error as Error).message}`,
+        { cause: error },
+      );
     }
 
     return results;
   }
 
-  async download(remotePath: string, localPath: string, options: TransferOptions = {}): Promise<void> {
+  async download(
+    remotePath: string,
+    localPath: string,
+    options: TransferOptions = {},
+  ): Promise<void> {
     options.signal?.throwIfAborted();
     try {
-      await this.backend.getFileClient(formatDataLakePath(remotePath)).readToFile(localPath, 0, undefined, transferProgress(options));
+      await this.backend
+        .getFileClient(formatDataLakePath(remotePath))
+        .readToFile(localPath, 0, undefined, transferProgress(options));
     } catch (error) {
-      throw new TransferError(`Failed to download '${remotePath}' from Azure Data Lake filesystem '${this.filesystemName}': ${(error as Error).message}`, { cause: error });
+      throw new TransferError(
+        `Failed to download '${remotePath}' from Azure Data Lake filesystem '${this.filesystemName}': ${(error as Error).message}`,
+        { cause: error },
+      );
     }
   }
 
-  async upload(localPath: string, remotePath: string, options: TransferOptions = {}): Promise<void> {
+  async upload(
+    localPath: string,
+    remotePath: string,
+    options: TransferOptions = {},
+  ): Promise<void> {
     options.signal?.throwIfAborted();
     try {
-      await this.backend.getFileClient(formatDataLakePath(remotePath)).uploadFile(localPath, transferProgress(options));
+      await this.backend
+        .getFileClient(formatDataLakePath(remotePath))
+        .uploadFile(localPath, transferProgress(options));
     } catch (error) {
-      throw new TransferError(`Failed to upload '${localPath}' to Azure Data Lake filesystem '${this.filesystemName}': ${(error as Error).message}`, { cause: error });
+      throw new TransferError(
+        `Failed to upload '${localPath}' to Azure Data Lake filesystem '${this.filesystemName}': ${(error as Error).message}`,
+        { cause: error },
+      );
     }
   }
 

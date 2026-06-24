@@ -86,7 +86,10 @@ export function clampSelection(selected: number, entryCount: number): number {
   return Math.max(0, Math.min(selected, entryCount - 1));
 }
 
-export function moveSelection(state: BrowserState, delta: number): BrowserState {
+export function moveSelection(
+  state: BrowserState,
+  delta: number,
+): BrowserState {
   return {
     ...state,
     selected: clampSelection(state.selected + delta, state.entries.length),
@@ -101,20 +104,28 @@ export function browserMode(state: BrowserState): BrowserMode {
   return state.mode ?? "normal";
 }
 
-export function selectByPrefix(state: BrowserState, prefix: string): BrowserState {
+export function selectByPrefix(
+  state: BrowserState,
+  prefix: string,
+): BrowserState {
   if (prefix === "") {
     return state;
   }
 
   const normalized = prefix.toLocaleLowerCase();
-  const index = state.entries.findIndex((entry) => entry.name.toLocaleLowerCase().startsWith(normalized));
+  const index = state.entries.findIndex((entry) =>
+    entry.name.toLocaleLowerCase().startsWith(normalized),
+  );
   if (index === -1) {
     return state;
   }
   return { ...state, selected: index };
 }
 
-export function keyToBrowserCommand(chunk: string, key: BrowserKeyPress = {}): BrowserCommand {
+export function keyToBrowserCommand(
+  chunk: string,
+  key: BrowserKeyPress = {},
+): BrowserCommand {
   if ((key.ctrl && key.name === "c") || chunk === "\x03") {
     return "quit";
   }
@@ -159,7 +170,10 @@ export function keyToBrowserCommand(chunk: string, key: BrowserKeyPress = {}): B
   }
 }
 
-export function keyToBrowserPromptInput(chunk: string, key: BrowserKeyPress = {}): BrowserPromptInput | undefined {
+export function keyToBrowserPromptInput(
+  chunk: string,
+  key: BrowserKeyPress = {},
+): BrowserPromptInput | undefined {
   if ((key.ctrl && key.name === "c") || chunk === "\x03") {
     return { type: "cancel" };
   }
@@ -190,14 +204,19 @@ export function keyToBrowserPromptInput(chunk: string, key: BrowserKeyPress = {}
   return undefined;
 }
 
-export function withEntries(state: BrowserState, entries: FileDescriptor[], status?: string): BrowserState {
+export function withEntries(
+  state: BrowserState,
+  entries: FileDescriptor[],
+  status?: string,
+): BrowserState {
   return {
     ...state,
     entries,
     loadingMessage: undefined,
     selected: clampSelection(state.selected, entries.length),
     prompt: undefined,
-    status: status ?? `${entries.length} item${entries.length === 1 ? "" : "s"}`,
+    status:
+      status ?? `${entries.length} item${entries.length === 1 ? "" : "s"}`,
   };
 }
 
@@ -208,15 +227,25 @@ function appendPromptInput(input: string, value: string): string {
   return `${input}${value}`;
 }
 
-function withSearchPrompt(state: BrowserState, input: string, previousStatus: string): BrowserState {
-  return selectByPrefix({
-    ...state,
-    prompt: { type: "search", input, previousStatus },
-    status: `Search: ${input}`,
-  }, input);
+function withSearchPrompt(
+  state: BrowserState,
+  input: string,
+  previousStatus: string,
+): BrowserState {
+  return selectByPrefix(
+    {
+      ...state,
+      prompt: { type: "search", input, previousStatus },
+      status: `Search: ${input}`,
+    },
+    input,
+  );
 }
 
-export function applyBrowserPromptInput(state: BrowserState, input: BrowserPromptInput): BrowserTransition {
+export function applyBrowserPromptInput(
+  state: BrowserState,
+  input: BrowserPromptInput,
+): BrowserTransition {
   const prompt = state.prompt;
   if (prompt === undefined) {
     return { state, effect: { type: "none" } };
@@ -235,11 +264,12 @@ export function applyBrowserPromptInput(state: BrowserState, input: BrowserPromp
           effect: { type: "none" },
         };
       }
-      const nextInput = input.type === "backspace"
-        ? prompt.input.slice(0, -1)
-        : input.type === "text"
-          ? appendPromptInput(prompt.input, input.value)
-          : prompt.input;
+      const nextInput =
+        input.type === "backspace"
+          ? prompt.input.slice(0, -1)
+          : input.type === "text"
+            ? appendPromptInput(prompt.input, input.value)
+            : prompt.input;
       return {
         state: withSearchPrompt(state, nextInput, prompt.previousStatus),
         effect: { type: "none" },
@@ -248,7 +278,11 @@ export function applyBrowserPromptInput(state: BrowserState, input: BrowserPromp
     case "mkdir": {
       if (input.type === "cancel") {
         return {
-          state: { ...state, prompt: undefined, status: "Directory creation cancelled" },
+          state: {
+            ...state,
+            prompt: undefined,
+            status: "Directory creation cancelled",
+          },
           effect: { type: "none" },
         };
       }
@@ -256,27 +290,43 @@ export function applyBrowserPromptInput(state: BrowserState, input: BrowserPromp
         const path = prompt.input.trim();
         if (path === "") {
           return {
-            state: { ...state, prompt: undefined, status: "Directory creation cancelled" },
+            state: {
+              ...state,
+              prompt: undefined,
+              status: "Directory creation cancelled",
+            },
             effect: { type: "none" },
           };
         }
         return {
-          state: { ...state, prompt: undefined, status: `Creating directory: ${path}` },
+          state: {
+            ...state,
+            prompt: undefined,
+            status: `Creating directory: ${path}`,
+          },
           effect: { type: "mkdir", path },
         };
       }
-      const nextInput = input.type === "backspace"
-        ? prompt.input.slice(0, -1)
-        : input.type === "text"
-          ? appendPromptInput(prompt.input, input.value)
-          : prompt.input;
+      const nextInput =
+        input.type === "backspace"
+          ? prompt.input.slice(0, -1)
+          : input.type === "text"
+            ? appendPromptInput(prompt.input, input.value)
+            : prompt.input;
       return {
-        state: { ...state, prompt: { type: "mkdir", input: nextInput }, status: `Create directory: ${nextInput}` },
+        state: {
+          ...state,
+          prompt: { type: "mkdir", input: nextInput },
+          status: `Create directory: ${nextInput}`,
+        },
         effect: { type: "none" },
       };
     }
     case "confirm-delete": {
-      if (input.type === "cancel" || (input.type === "text" && input.value.toLocaleLowerCase() === "n")) {
+      if (
+        input.type === "cancel" ||
+        (input.type === "text" && input.value.toLocaleLowerCase() === "n")
+      ) {
         return {
           state: { ...state, prompt: undefined, status: "Deletion cancelled" },
           effect: { type: "none" },
@@ -284,14 +334,21 @@ export function applyBrowserPromptInput(state: BrowserState, input: BrowserPromp
       }
       if (input.type === "text" && input.value.toLocaleLowerCase() === "y") {
         return {
-          state: { ...state, prompt: undefined, status: `Deleting: ${prompt.name}` },
+          state: {
+            ...state,
+            prompt: undefined,
+            status: `Deleting: ${prompt.name}`,
+          },
           effect: { type: "delete-file", path: prompt.path, name: prompt.name },
         };
       }
       return { state, effect: { type: "none" } };
     }
     case "confirm-download": {
-      if (input.type === "cancel" || (input.type === "text" && input.value.toLocaleLowerCase() === "n")) {
+      if (
+        input.type === "cancel" ||
+        (input.type === "text" && input.value.toLocaleLowerCase() === "n")
+      ) {
         return {
           state: { ...state, prompt: undefined, status: "Download cancelled" },
           effect: { type: "none" },
@@ -299,14 +356,26 @@ export function applyBrowserPromptInput(state: BrowserState, input: BrowserPromp
       }
       if (input.type === "text" && input.value.toLocaleLowerCase() === "y") {
         return {
-          state: { ...state, prompt: undefined, status: `Downloading: ${prompt.name}` },
-          effect: { type: "download-file", path: prompt.path, name: prompt.name, size: prompt.size },
+          state: {
+            ...state,
+            prompt: undefined,
+            status: `Downloading: ${prompt.name}`,
+          },
+          effect: {
+            type: "download-file",
+            path: prompt.path,
+            name: prompt.name,
+            size: prompt.size,
+          },
         };
       }
       return { state, effect: { type: "none" } };
     }
     case "confirm-upload": {
-      if (input.type === "cancel" || (input.type === "text" && input.value.toLocaleLowerCase() === "n")) {
+      if (
+        input.type === "cancel" ||
+        (input.type === "text" && input.value.toLocaleLowerCase() === "n")
+      ) {
         return {
           state: { ...state, prompt: undefined, status: "Upload cancelled" },
           effect: { type: "none" },
@@ -314,8 +383,17 @@ export function applyBrowserPromptInput(state: BrowserState, input: BrowserPromp
       }
       if (input.type === "text" && input.value.toLocaleLowerCase() === "y") {
         return {
-          state: { ...state, prompt: undefined, status: `Uploading: ${prompt.name}` },
-          effect: { type: "upload-file", path: prompt.path, name: prompt.name, size: prompt.size },
+          state: {
+            ...state,
+            prompt: undefined,
+            status: `Uploading: ${prompt.name}`,
+          },
+          effect: {
+            type: "upload-file",
+            path: prompt.path,
+            name: prompt.name,
+            size: prompt.size,
+          },
         };
       }
       return { state, effect: { type: "none" } };
@@ -323,7 +401,10 @@ export function applyBrowserPromptInput(state: BrowserState, input: BrowserPromp
   }
 }
 
-export function applyBrowserCommand(state: BrowserState, command: BrowserCommand): BrowserTransition {
+export function applyBrowserCommand(
+  state: BrowserState,
+  command: BrowserCommand,
+): BrowserTransition {
   switch (command) {
     case "back":
       return { state, effect: { type: "back" } };
@@ -337,7 +418,13 @@ export function applyBrowserCommand(state: BrowserState, command: BrowserCommand
       return { state: { ...state, selected: 0 }, effect: { type: "none" } };
     case "last":
       return {
-        state: { ...state, selected: clampSelection(state.entries.length - 1, state.entries.length) },
+        state: {
+          ...state,
+          selected: clampSelection(
+            state.entries.length - 1,
+            state.entries.length,
+          ),
+        },
         effect: { type: "none" },
       };
     case "open": {
@@ -350,7 +437,12 @@ export function applyBrowserCommand(state: BrowserState, command: BrowserCommand
           return {
             state: {
               ...state,
-              prompt: { type: "confirm-upload", path: entry.path, name: entry.name, size: entry.size },
+              prompt: {
+                type: "confirm-upload",
+                path: entry.path,
+                name: entry.name,
+                size: entry.size,
+              },
               status: `Upload ${entry.name} to remote directory? y/n`,
             },
             effect: { type: "none" },
@@ -359,7 +451,12 @@ export function applyBrowserCommand(state: BrowserState, command: BrowserCommand
         return {
           state: {
             ...state,
-            prompt: { type: "confirm-download", path: entry.path, name: entry.name, size: entry.size },
+            prompt: {
+              type: "confirm-download",
+              path: entry.path,
+              name: entry.name,
+              size: entry.size,
+            },
             status: `Download ${entry.name} to local directory? y/n`,
           },
           effect: { type: "none" },
@@ -383,21 +480,34 @@ export function applyBrowserCommand(state: BrowserState, command: BrowserCommand
     case "delete": {
       if (browserMode(state) === "upload") {
         return {
-          state: { ...state, status: "Upload mode: select a file or press U to exit" },
+          state: {
+            ...state,
+            status: "Upload mode: select a file or press U to exit",
+          },
           effect: { type: "none" },
         };
       }
       const entry = selectedEntry(state);
       if (entry === undefined) {
-        return { state: { ...state, status: "No file selected" }, effect: { type: "none" } };
+        return {
+          state: { ...state, status: "No file selected" },
+          effect: { type: "none" },
+        };
       }
       if (entry.type === "directory") {
-        return { state: { ...state, status: "Cannot delete directories" }, effect: { type: "none" } };
+        return {
+          state: { ...state, status: "Cannot delete directories" },
+          effect: { type: "none" },
+        };
       }
       return {
         state: {
           ...state,
-          prompt: { type: "confirm-delete", path: entry.path, name: entry.name },
+          prompt: {
+            type: "confirm-delete",
+            path: entry.path,
+            name: entry.name,
+          },
           status: `Delete ${entry.name}? y/n`,
         },
         effect: { type: "none" },
@@ -406,22 +516,36 @@ export function applyBrowserCommand(state: BrowserState, command: BrowserCommand
     case "mkdir":
       if (browserMode(state) === "upload") {
         return {
-          state: { ...state, status: "Upload mode: select a file or press U to exit" },
+          state: {
+            ...state,
+            status: "Upload mode: select a file or press U to exit",
+          },
           effect: { type: "none" },
         };
       }
       return {
-        state: { ...state, prompt: { type: "mkdir", input: "" }, status: "Create directory: " },
+        state: {
+          ...state,
+          prompt: { type: "mkdir", input: "" },
+          status: "Create directory: ",
+        },
         effect: { type: "none" },
       };
     case "toggle-upload":
       return {
         state,
-        effect: browserMode(state) === "upload" ? { type: "exit-upload-mode" } : { type: "enter-upload-mode" },
+        effect:
+          browserMode(state) === "upload"
+            ? { type: "exit-upload-mode" }
+            : { type: "enter-upload-mode" },
       };
     case "help":
       return {
-        state: { ...state, prompt: { type: "help", previousStatus: state.status }, status: "Key Commands" },
+        state: {
+          ...state,
+          prompt: { type: "help", previousStatus: state.status },
+          status: "Key Commands",
+        },
         effect: { type: "none" },
       };
     case "none":

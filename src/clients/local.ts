@@ -1,9 +1,21 @@
 import { createReadStream, createWriteStream } from "node:fs";
-import { chmod, lstat, mkdir, readdir, stat, unlink, utimes } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  readdir,
+  stat,
+  unlink,
+  utimes,
+} from "node:fs/promises";
 import { basename, join } from "node:path";
 import { Transform, type TransformCallback } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import type { FileDescriptor, StorageClient, TransferOptions } from "../types.ts";
+import type {
+  FileDescriptor,
+  StorageClient,
+  TransferOptions,
+} from "../types.ts";
 import { ListingError } from "../errors.ts";
 
 const LOCAL_COPY_CHUNK_SIZE = 64 * 1024;
@@ -12,14 +24,24 @@ function normalizeStreamError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-async function copyLocalFile(sourcePath: string, destinationPath: string, options: TransferOptions): Promise<void> {
+async function copyLocalFile(
+  sourcePath: string,
+  destinationPath: string,
+  options: TransferOptions,
+): Promise<void> {
   options.signal?.throwIfAborted();
   const info = await stat(sourcePath);
   let bytes = 0;
 
-  const readStream = createReadStream(sourcePath, { highWaterMark: LOCAL_COPY_CHUNK_SIZE });
+  const readStream = createReadStream(sourcePath, {
+    highWaterMark: LOCAL_COPY_CHUNK_SIZE,
+  });
   const progressStream = new Transform({
-    transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback) {
+    transform(
+      chunk: Buffer,
+      _encoding: BufferEncoding,
+      callback: TransformCallback,
+    ) {
       try {
         bytes += chunk.byteLength;
         options.onProgress?.({ bytes, total: info.size });
@@ -34,7 +56,9 @@ async function copyLocalFile(sourcePath: string, destinationPath: string, option
 
   try {
     if (options.signal) {
-      await pipeline(readStream, progressStream, writeStream, { signal: options.signal });
+      await pipeline(readStream, progressStream, writeStream, {
+        signal: options.signal,
+      });
     } else {
       await pipeline(readStream, progressStream, writeStream);
     }
@@ -64,7 +88,9 @@ export class LocalClient implements StorageClient {
     try {
       entries = await readdir(path);
     } catch (error) {
-      throw new ListingError(`Failed to list directory '${path}': ${(error as Error).message}`);
+      throw new ListingError(
+        `Failed to list directory '${path}': ${(error as Error).message}`,
+      );
     }
 
     const descriptors: FileDescriptor[] = [];
@@ -96,11 +122,19 @@ export class LocalClient implements StorageClient {
     return descriptors;
   }
 
-  async download(remotePath: string, localPath: string, options: TransferOptions = {}): Promise<void> {
+  async download(
+    remotePath: string,
+    localPath: string,
+    options: TransferOptions = {},
+  ): Promise<void> {
     await copyLocalFile(remotePath, localPath, options);
   }
 
-  async upload(localPath: string, remotePath: string, options: TransferOptions = {}): Promise<void> {
+  async upload(
+    localPath: string,
+    remotePath: string,
+    options: TransferOptions = {},
+  ): Promise<void> {
     await copyLocalFile(localPath, remotePath, options);
   }
 

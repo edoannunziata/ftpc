@@ -1,8 +1,16 @@
 import { emitKeypressEvents } from "node:readline";
-import { isAbsolute as isLocalPathAbsolute, join as joinLocalPath, resolve as resolveLocalPath } from "node:path";
+import {
+  isAbsolute as isLocalPathAbsolute,
+  join as joinLocalPath,
+  resolve as resolveLocalPath,
+} from "node:path";
 import type { ReadStream, WriteStream } from "node:tty";
 import { joinRemotePath, parentRemotePath } from "../paths.ts";
-import type { FileDescriptor, TransferOptions, TransferProgress } from "../types.ts";
+import type {
+  FileDescriptor,
+  TransferOptions,
+  TransferProgress,
+} from "../types.ts";
 import { Storage, type StorageSession } from "../storage.ts";
 import { renderBrowserFrame, ScreenBuffer } from "./render.ts";
 import {
@@ -34,7 +42,10 @@ interface ActiveTransfer {
   type: TransferKind;
 }
 
-async function loadEntries(session: StorageSession, cwd: string): Promise<FileDescriptor[]> {
+async function loadEntries(
+  session: StorageSession,
+  cwd: string,
+): Promise<FileDescriptor[]> {
   const entries = await session.list(cwd);
   return entries.sort((left, right) => {
     if (left.type !== right.type) {
@@ -44,7 +55,10 @@ async function loadEntries(session: StorageSession, cwd: string): Promise<FileDe
   });
 }
 
-function initialBrowserPath(session: StorageSession, initialPath: string | undefined): string {
+function initialBrowserPath(
+  session: StorageSession,
+  initialPath: string | undefined,
+): string {
   const path = initialPath ?? session.basePath;
   if (session.name === "Local Storage" && !isLocalPathAbsolute(path)) {
     return resolveLocalPath(path);
@@ -52,7 +66,10 @@ function initialBrowserPath(session: StorageSession, initialPath: string | undef
   return path;
 }
 
-export async function runBrowser(session: StorageSession, options: BrowserRunOptions = {}): Promise<void> {
+export async function runBrowser(
+  session: StorageSession,
+  options: BrowserRunOptions = {},
+): Promise<void> {
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;
   const previousRawMode = input.isRaw;
@@ -84,17 +101,30 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
   };
 
   const draw = (): void => {
-    output.write(buffer.render(renderBrowserFrame(state, {
-      width: output.columns ?? 80,
-      height: output.rows ?? 24,
-    }, { colors: true })));
+    output.write(
+      buffer.render(
+        renderBrowserFrame(
+          state,
+          {
+            width: output.columns ?? 80,
+            height: output.rows ?? 24,
+          },
+          { colors: true },
+        ),
+      ),
+    );
   };
 
-  const activeSession = (): StorageSession => browserMode(state) === "upload" ? uploadSession : session;
+  const activeSession = (): StorageSession =>
+    browserMode(state) === "upload" ? uploadSession : session;
 
   const refresh = async (status?: string): Promise<void> => {
     try {
-      state = withEntries(state, await loadEntries(activeSession(), state.cwd), status);
+      state = withEntries(
+        state,
+        await loadEntries(activeSession(), state.cwd),
+        status,
+      );
     } catch (error) {
       state = {
         ...state,
@@ -107,7 +137,12 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
     }
   };
 
-  const setTransferProgress = (type: TransferKind, name: string, total: number | undefined, progress: TransferProgress): void => {
+  const setTransferProgress = (
+    type: TransferKind,
+    name: string,
+    total: number | undefined,
+    progress: TransferProgress,
+  ): void => {
     state = {
       ...state,
       transfer: {
@@ -131,9 +166,10 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
     }
     state = {
       ...state,
-      transfer: state.transfer === undefined
-        ? undefined
-        : { ...state.transfer, cancelling: true },
+      transfer:
+        state.transfer === undefined
+          ? undefined
+          : { ...state.transfer, cancelling: true },
       status: `Canceling ${activeTransfer.name}...`,
     };
     draw();
@@ -160,7 +196,8 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
     try {
       await transfer({
         signal: controller.signal,
-        onProgress: (progress) => setTransferProgress(type, name, total, progress),
+        onProgress: (progress) =>
+          setTransferProgress(type, name, total, progress),
       });
       controller.signal.throwIfAborted();
       activeTransfer = undefined;
@@ -168,7 +205,8 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
       await onSuccess();
     } catch (error) {
       activeTransfer = undefined;
-      const canceled = controller.signal.aborted || (error as Error).name === "AbortError";
+      const canceled =
+        controller.signal.aborted || (error as Error).name === "AbortError";
       state = {
         ...state,
         transfer: undefined,
@@ -273,7 +311,9 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
         await refresh("Exited upload mode");
         break;
       case "delete-file": {
-        const deleted = await session.delete(joinRemotePath(state.cwd, effect.path));
+        const deleted = await session.delete(
+          joinRemotePath(state.cwd, effect.path),
+        );
         if (deleted) {
           await refresh(`Deleted: ${effect.name}`);
         } else {
@@ -287,9 +327,17 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
           "download",
           effect.name,
           effect.size,
-          (options) => session.download(joinRemotePath(state.cwd, effect.path), localPath, options),
+          (options) =>
+            session.download(
+              joinRemotePath(state.cwd, effect.path),
+              localPath,
+              options,
+            ),
           () => {
-            state = { ...state, status: `Downloaded: ${effect.name} to ${process.cwd()}` };
+            state = {
+              ...state,
+              status: `Downloaded: ${effect.name} to ${process.cwd()}`,
+            };
           },
         );
         break;
@@ -300,7 +348,12 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
           "upload",
           effect.name,
           effect.size,
-          (options) => session.upload(localPath, joinRemotePath(remoteCwd, effect.name), options),
+          (options) =>
+            session.upload(
+              localPath,
+              joinRemotePath(remoteCwd, effect.name),
+              options,
+            ),
           async () => {
             state = {
               ...state,
@@ -317,11 +370,16 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
         break;
       }
       case "mkdir": {
-        const created = await session.mkdir(joinRemotePath(state.cwd, effect.path));
+        const created = await session.mkdir(
+          joinRemotePath(state.cwd, effect.path),
+        );
         if (created) {
           await refresh(`Created directory: ${effect.path}`);
         } else {
-          state = { ...state, status: `Failed to create directory: ${effect.path}` };
+          state = {
+            ...state,
+            status: `Failed to create directory: ${effect.path}`,
+          };
         }
         break;
       }
@@ -330,7 +388,10 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
     }
   };
 
-  const handleKey = async (chunk: string, key: BrowserKeyPress = {}): Promise<void> => {
+  const handleKey = async (
+    chunk: string,
+    key: BrowserKeyPress = {},
+  ): Promise<void> => {
     if (done) {
       return;
     }
@@ -340,7 +401,11 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
         cancelActiveTransfer(true);
         return;
       }
-      if (keyToBrowserCommand(chunk, key) === "quit" || key.name === "escape" || chunk === "\x1b") {
+      if (
+        keyToBrowserCommand(chunk, key) === "quit" ||
+        key.name === "escape" ||
+        chunk === "\x1b"
+      ) {
         cancelActiveTransfer(false);
         return;
       }
@@ -354,7 +419,10 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
     }
 
     if (state.prompt !== undefined) {
-      const input = state.prompt.type === "help" ? { type: "submit" as const } : keyToBrowserPromptInput(chunk, key);
+      const input =
+        state.prompt.type === "help"
+          ? { type: "submit" as const }
+          : keyToBrowserPromptInput(chunk, key);
       if (input !== undefined) {
         const transition = applyBrowserPromptInput(state, input);
         state = transition.state;
@@ -364,7 +432,10 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
       return;
     }
 
-    const transition = applyBrowserCommand(state, keyToBrowserCommand(chunk, key));
+    const transition = applyBrowserCommand(
+      state,
+      keyToBrowserCommand(chunk, key),
+    );
     state = transition.state;
     await runEffect(transition.effect);
 
@@ -377,7 +448,11 @@ export async function runBrowser(session: StorageSession, options: BrowserRunOpt
 
   const onKey = (chunk: string, key: BrowserKeyPress): void => {
     void handleKey(chunk, key).catch((error) => {
-      state = { ...state, prompt: undefined, status: `Error: ${(error as Error).message}` };
+      state = {
+        ...state,
+        prompt: undefined,
+        status: `Error: ${(error as Error).message}`,
+      };
       draw();
     });
   };

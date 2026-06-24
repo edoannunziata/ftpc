@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+
+bun.lock
+
+.git/
+.idea/
+.vscode/
+.claude/
+
+.venv/
+build/
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+__pycache__/

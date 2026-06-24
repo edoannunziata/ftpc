@@ -1,138 +1,74 @@
 # ftpc
 
-ftpc is a simple TUI file transfer client that supports multiple storage backends.
-It is designed to be simple and hackable, and doubles as a quick-and-dirty library
-to access the storage backends programmatically.
+ftpc is a Bun and TypeScript terminal file-transfer client with a small library API
+for moving files across local storage, FTP/FTPS, SFTP, S3-compatible storage,
+Azure Data Lake Storage Gen2, and Azure Blob Storage.
 
-The project was born out of frusration for Microsoft's tools to access Azure storage,
-most of my needs are relatively simple and I have no need for software that's complex
-and slow.
+## Quick Start
 
-A substantial part of the development was assisted by artificial intelligence tools,
-and the projects doubles as a training ground to see how far these tools can be pushed.
-
-This project is not "vibe coded". I am pushing
-myself to explore various AI tools more than I normally would, but the priority is to
-make something useful for myself (and hopefully others.) If the AI gets stuck, can't
-complete a task or makes a mess of it, I step in and fix the problem.
-Purity is _not_ a goal.
-
-
-## Supported backends
-- Local filesystem
-- FTP/FTPS with TLS support
-- SFTP
-- S3 compatible
-- Azure Data Lake Storage Gen2
-
-## Installation
-
-### Basic Installation
 ```bash
-pip install -e .
+bun install
+bun run typecheck
+bun test tests
 ```
 
-### Full Installation (all backends)
+Run the CLI directly during development:
+
 ```bash
-pip install -e ".[all]"
+bun run src/index.ts --help
+bun run src/index.ts remotes
+bun run src/index.ts browse
 ```
 
-### Installing Specific Backends
+Build a standalone Bun executable:
 
-For Azure support:
 ```bash
-pip install azure-storage-file-datalake azure-identity
+bun run build:exe
+./dist/ftpc --help
 ```
 
-For AWS S3 support:
-```bash
-pip install boto3
+## CLI
+
+```text
+ftpc [--config PATH] browse [remote] [path]
+ftpc [--config PATH] remotes
+ftpc [--config PATH] ls <connection> [path]
+ftpc [--config PATH] get <connection> <remote-path> <local-path>
+ftpc [--config PATH] put <connection> <local-path> <remote-path>
+ftpc [--config PATH] rm <connection> <remote-path>
+ftpc [--config PATH] mkdir <connection> <remote-path>
 ```
 
-For SFTP support:
+`connection` can be a configured remote name or a storage URL. With the default
+config path, ftpc creates `~/.ftpcconf.toml` on first run. A custom `--config`
+path must already exist.
+
+Examples:
+
 ```bash
-pip install paramiko
+bun run src/index.ts ls file:///tmp
+bun run src/index.ts put my-ftp ./report.csv /incoming/report.csv
+bun run src/index.ts get s3://bucket/archive/data.csv ./data.csv
+bun run src/index.ts browse my-azure /reports
 ```
+
+When `browse` runs in a non-interactive terminal, it falls back to a one-shot
+directory listing. In a TTY, it opens the interactive browser and remote
+selector.
 
 ## Configuration
 
-FTPC uses a TOML configuration file to manage connection details. By default, it looks for `~/.ftpcconf.toml`.
-
-If no configuration file exists, ftpc will automatically create a default one with a local filesystem remote. You can find a sample configuration in [`ftpc/sample_config.toml`](ftpc/sample_config.toml).
-
-### Configuration Options
-
-Each remote connection is defined as a section in the TOML file with a `type` field specifying the storage backend.
-
-#### Local Client
+ftpc reads TOML configuration from `~/.ftpcconf.toml` by default. Each top-level
+table is a named remote and must include a `type`.
 
 ```toml
-[local]
-type = "local"
-# No additional configuration needed for local file access
-```
-
-#### FTP Client
-
-```toml
-[ftp]
-type = "ftp"
-url = "ftp://ftp.example.com"       # Required: FTP server URL
-username = "user"                   # Optional: Username (default: "anonymous")
-password = "password"               # Optional: Password (default: "anonymous@")
-tls = false                         # Optional: Enable TLS/SSL (default: false)
-```
-
-#### SFTP Client
-
-```toml
-[sftp]
-type = "sftp"
-url = "sftp.example.com"            # Required: SFTP server hostname
-port = 22                           # Optional: SSH port (default: 22)
-username = "user"                   # Optional: Username for authentication
-password = "password"               # Optional: Password (either password or key_filename required)
-key_filename = "/path/to/private_key"  # Optional: Path to private key file
-```
-
-#### AWS S3 Client
-
-```toml
-[s3]
-type = "s3"
-url = "s3://my-bucket"              # Optional: S3 URL (alternative to bucket_name)
-bucket_name = "my-bucket"           # Optional: S3 bucket name (alternative to url)
-region_name = "us-west-2"           # Optional: AWS region
-endpoint_url = "https://s3.amazonaws.com"  # Optional: Custom S3 endpoint (for S3-compatible services)
-aws_access_key_id = "ACCESS_KEY"    # Optional: AWS access key (uses environment/credentials if not specified)
-aws_secret_access_key = "SECRET_KEY"  # Optional: AWS secret key (uses environment/credentials if not specified)
-```
-
-**Note:** AWS credentials are typically loaded from environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) or `~/.aws/credentials` file. Only specify credentials in the config if needed.
-
-#### Azure Data Lake Storage Gen2 Client
-
-```toml
-[azure]
-type = "azure"
-url = "mystorageaccount.dfs.core.windows.net"  # Required: Azure storage account URL
-filesystem = "myfilesystem"         # Required: Azure filesystem name
-connection_string = "DefaultEndpointsProtocol=https;..."  # Optional: Full connection string
-account_key = "ACCOUNT_KEY"         # Optional: Storage account key
-```
-
-**Note:** Azure authentication typically uses environment variables or Azure CLI login. Only specify `connection_string` or `account_key` if needed for direct authentication.
-
-### Example Configuration File
-
-```toml
-# Complete example showing all supported backends
 [local]
 type = "local"
 
 [my-ftp]
 type = "ftp"
-url = "ftp://ftp.example.com"
+url = "ftp.example.com"
+port = 21
 username = "user"
 password = "password"
 tls = true
@@ -140,168 +76,141 @@ tls = true
 [my-sftp]
 type = "sftp"
 url = "sftp.example.com"
+port = 22
 username = "user"
-key_filename = "/home/user/.ssh/id_rsa"
+password = "password"
+# key_filename = "~/.ssh/id_rsa"
 
 [my-s3]
 type = "s3"
-url = "s3://my-bucket"
-region_name = "us-west-2"
+url = "s3://my-bucket/prefix"
+region_name = "us-east-1"
+endpoint_url = "https://s3.amazonaws.com"
+aws_access_key_id = "ACCESS_KEY"
+aws_secret_access_key = "SECRET_KEY"
 
 [my-azure]
 type = "azure"
 url = "mystorageaccount.dfs.core.windows.net"
 filesystem = "myfilesystem"
+connection_string = "DefaultEndpointsProtocol=https;AccountName=..."
+# account_key = "ACCOUNT_KEY"
+
+[my-blob]
+type = "blob"
+url = "mystorageaccount.blob.core.windows.net"
+container = "mycontainer"
+connection_string = "DefaultEndpointsProtocol=https;AccountName=..."
+# account_key = "ACCOUNT_KEY"
 ```
 
-## Usage
+FTP, SFTP, and anonymous S3 requests support SOCKS5 proxy settings:
+
+```toml
+[my-ftp.proxy]
+host = "proxy.example.com"
+port = 1080
+username = "proxyuser"
+password = "proxypass"
+```
+
+Credentialed S3 and Azure SDK clients fail clearly if proxy settings are used,
+because native SDK proxy transport is not wired in yet.
+
+## Storage URLs
+
+| Backend         | URL format                                             | Example                                            |
+| --------------- | ------------------------------------------------------ | -------------------------------------------------- |
+| Local           | `file:///path` or `/path`                              | `file:///tmp/data`                                 |
+| FTP             | `ftp://[user:pass@]host[:port]/path`                   | `ftp://ftp.example.com/pub`                        |
+| FTPS            | `ftps://[user:pass@]host[:port]/path`                  | `ftps://secure.example.com`                        |
+| SFTP            | `sftp://[user:pass@]host[:port]/path`                  | `sftp://user@host/home/user`                       |
+| S3              | `s3://bucket/path`                                     | `s3://my-bucket/reports`                           |
+| Azure Data Lake | `azure://account.dfs.core.windows.net/filesystem/path` | `azure://acct.dfs.core.windows.net/fs/base`        |
+| Azure Blob      | `blob://account.blob.core.windows.net/container/path`  | `blob://acct.blob.core.windows.net/container/base` |
+
+## Library API
+
+```ts
+import { Storage } from "./src/index.ts";
+
+const store = Storage.connect("s3://my-bucket/reports");
+
+try {
+  const entries = await store.list();
+  for (const entry of entries) {
+    console.log(entry.type, entry.name, entry.size);
+  }
+
+  await store.download("daily.csv", "./daily.csv");
+  await store.upload("./summary.csv", "summary.csv");
+  await store.mkdir("archive");
+  await store.delete("old.csv");
+} finally {
+  await store.close();
+}
+```
+
+Named constructors are available when configuration is easier to provide in
+code:
+
+```ts
+const ftp = Storage.ftp("ftp.example.com", {
+  username: "user",
+  password: "password",
+  tls: true,
+  basePath: "/incoming",
+});
+
+const blob = Storage.azureBlob("account.blob.core.windows.net", "container", {
+  accountKey: process.env.AZURE_STORAGE_ACCOUNT_KEY,
+  basePath: "/reports",
+});
+```
+
+All sessions expose:
+
+| Method                                      | Description                            |
+| ------------------------------------------- | -------------------------------------- |
+| `list(path?)`                               | List files and directories.            |
+| `download(remotePath, localPath, options?)` | Download one file.                     |
+| `upload(localPath, remotePath, options?)`   | Upload one file.                       |
+| `delete(path)`                              | Delete one remote file.                |
+| `mkdir(path)`                               | Create one remote directory or prefix. |
+| `close()`                                   | Close backend resources.               |
+
+Transfer options support an `AbortSignal` and an `onProgress` callback.
+
+## Interactive Browser
+
+| Key                 | Action                                   |
+| ------------------- | ---------------------------------------- |
+| `j` / down          | Move selection down                      |
+| `k` / up            | Move selection up                        |
+| `g` / `G`           | Jump to first or last entry              |
+| `l` / right / enter | Enter directory or confirm file download |
+| `h` / left          | Go back                                  |
+| `p`                 | Go to parent directory                   |
+| `/`                 | Search by filename prefix                |
+| `d`                 | Delete selected file after confirmation  |
+| `m`                 | Create a directory                       |
+| `u`                 | Toggle upload mode                       |
+| `r`                 | Refresh                                  |
+| `?`                 | Help                                     |
+| `q`                 | Quit                                     |
+
+## Tests
+
+The default suite uses mocks and local temporary files:
 
 ```bash
-python -m ftpc [--config CONFIG_FILE] <remote> [path]
+bun test tests
 ```
 
-- `--config`: Optional path to configuration file (defaults to `~/.ftpcconf.toml`)
-- `remote`: Name of the remote connection from your config file
-- `path`: Optional starting path (defaults to root '/')
-
-Examples:
-```bash
-# Connect to defined S3 remote and start at root path
-python -m ftpc s3
-
-# Connect to defined FTP remote and start at specific path
-python -m ftpc ftp /public/files
-
-# Use a specific config file
-python -m ftpc --config ./my-config.toml azure /documents
-```
-
-## Keyboard Controls
-
-| Key           | Action                              |
-|---------------|-------------------------------------|
-| Arrow keys    | Navigate file list                  |
-| Enter         | Enter directory or download file    |
-| Left Arrow    | Go back in history                  |
-| p             | Go to parent directory              |
-| r             | Refresh current directory           |
-| u             | Toggle upload mode                  |
-| d             | Delete selected file                |
-| /             | Search for files                    |
-| ?             | Show help dialog                    |
-| q             | Quit application                    |
-
-## Library Usage
-
-ftpc can be used as a library for programmatic access to storage backends via the `Storage` facade.
-
-### Quick Start
-
-```python
-from ftpc import Storage
-
-# Async usage with URL
-async with Storage.connect("s3://my-bucket") as store:
-    files = await store.list()
-    await store.download("remote/file.txt", "local.txt")
-    await store.upload("local.txt", "remote/backup.txt")
-
-# Sync usage with URL
-with Storage.connect_sync("sftp://user:pass@host.com/home") as store:
-    files = store.list()
-    store.upload("data.csv", "backup.csv")
-```
-
-### Supported URL Formats
-
-| Protocol | Format | Example |
-|----------|--------|---------|
-| Local | `file:///path` or `/path` | `/home/user/data` |
-| FTP | `ftp://[user:pass@]host[:port]/path` | `ftp://ftp.example.com/pub` |
-| FTPS | `ftps://[user:pass@]host[:port]/path` | `ftps://user:pass@secure.example.com` |
-| SFTP | `sftp://[user:pass@]host[:port]/path` | `sftp://user@host.com/home/user` |
-| S3 | `s3://bucket/path` | `s3://my-bucket/data` |
-| Azure Data Lake | `azure://account.dfs.core.windows.net/filesystem/path` | `azure://myaccount.dfs.core.windows.net/myfs` |
-| Azure Blob | `blob://account.blob.core.windows.net/container/path` | `blob://myaccount.blob.core.windows.net/mycontainer` |
-
-### Named Constructors
-
-For more control over connection parameters, use named constructors:
-
-```python
-from ftpc import Storage
-
-# S3 with explicit configuration
-async with Storage.s3(
-    bucket="my-bucket",
-    region="us-east-1",
-    access_key_id="...",
-    secret_access_key="..."
-) as store:
-    await store.list()
-
-# FTP with TLS
-with Storage.ftp(
-    host="ftp.example.com",
-    username="user",
-    password="pass",
-    tls=True
-).sync() as store:
-    store.list()
-
-# SFTP with key authentication
-with Storage.sftp(
-    host="server.example.com",
-    username="user",
-    key_filename="/path/to/key"
-).sync() as store:
-    store.list()
-
-# Azure Data Lake
-async with Storage.azure(
-    account_url="https://myaccount.dfs.core.windows.net",
-    filesystem="myfilesystem",
-    account_key="..."
-) as store:
-    await store.list()
-
-# Local filesystem
-with Storage.local("/home/user/data").sync() as store:
-    files = store.list()
-```
-
-### Available Operations
-
-All storage sessions provide these methods:
-
-| Method | Description |
-|--------|-------------|
-| `list(path=None)` | List files/directories (defaults to base path) |
-| `download(remote, local, progress=None)` | Download a file |
-| `upload(local, remote, progress=None)` | Upload a file |
-| `delete(path)` | Delete a file |
-| `mkdir(path)` | Create a directory |
-
-The `progress` callback receives bytes transferred and returns `False` to cancel.
-
-## Claude Code Skills
-
-This repository includes skills for [Claude Code](https://claude.ai/code) that enable AI agents to interact with remote storage backends.
-
-### Available Skills
-
-| Skill | Description |
-|-------|-------------|
-| `ftpc-storage` | Read-only access to storage backends. List directories, download files, inspect metadata. |
-| `ftpc-storage-write` | Full read-write access. Upload, delete, and create directories in addition to read operations. |
-
-### Installation
-
-Copy the skill directories from `skills/` to your Claude Code skills directory:
+Real backend integration tests are skipped unless explicitly enabled. Set
+`FTPC_INTEGRATION=1` and the relevant `FTPC_INTEGRATION_*` environment
+variables, then run:
 
 ```bash
-cp -r skills/ftpc-storage ~/.claude/skills/
-cp -r skills/ftpc-storage-write ~/.claude/skills/
+FTPC_INTEGRATION=1 bun test tests/integration.test.ts
 ```
-
-The skills provide AI agents with documented patterns for using the `ftpc` library to access local filesystems, FTP/SFTP servers, S3 buckets, and Azure storage.

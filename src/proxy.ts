@@ -5,7 +5,11 @@ export function describeProxy(proxy: ProxyConfig): string {
   return `${proxy.host}:${proxy.port}`;
 }
 
-export function throwProxyUnsupported(type: string, name: string, proxy: ProxyConfig): never {
+export function throwProxyUnsupported(
+  type: string,
+  name: string,
+  proxy: ProxyConfig,
+): never {
   throw new UnsupportedFeatureError(
     `${type} remote '${name}' uses SOCKS5 proxy ${describeProxy(proxy)}, but proxy transport is not implemented in the Bun adapter yet`,
   );

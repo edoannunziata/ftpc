@@ -44,10 +44,18 @@ export async function runRemoteSelector(
   let selection: RemoteSelection | undefined;
 
   const draw = (): void => {
-    output.write(buffer.render(renderRemoteSelectorFrame(state, {
-      width: output.columns ?? 80,
-      height: output.rows ?? 24,
-    }, { colors: true })));
+    output.write(
+      buffer.render(
+        renderRemoteSelectorFrame(
+          state,
+          {
+            width: output.columns ?? 80,
+            height: output.rows ?? 24,
+          },
+          { colors: true },
+        ),
+      ),
+    );
   };
 
   output.write(ENTER_ALT_SCREEN);
@@ -87,9 +95,10 @@ export async function runRemoteSelector(
     }
 
     if (state.prompt !== undefined) {
-      const inputValue = state.prompt.type === "help" || state.prompt.type === "details"
-        ? { type: "submit" as const }
-        : promptInputFromKey(chunk, key);
+      const inputValue =
+        state.prompt.type === "help" || state.prompt.type === "details"
+          ? { type: "submit" as const }
+          : promptInputFromKey(chunk, key);
       if (inputValue !== undefined) {
         const transition = applyRemoteSelectorPromptInput(state, inputValue);
         state = transition.state;
@@ -101,7 +110,10 @@ export async function runRemoteSelector(
       return;
     }
 
-    const transition = applyRemoteSelectorCommand(state, keyToRemoteSelectorCommand(chunk, key));
+    const transition = applyRemoteSelectorCommand(
+      state,
+      keyToRemoteSelectorCommand(chunk, key),
+    );
     state = transition.state;
     runEffect(transition.effect);
 

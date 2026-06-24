@@ -6,8 +6,12 @@
   "license": "MIT",
   "scripts": {
     "dev": "bun run src/index.ts",
-    "test": "bun test tests/bun",
-    "typecheck": "tsc --noEmit",
+    "format": "bunx prettier --write . --ignore-unknown --ignore-path .prettierignore",
+    "format:check": "bunx prettier --check . --ignore-unknown --ignore-path .prettierignore",
+    "hooks:install": "bun run scripts/install-hooks.ts",
+    "prepare": "bun run hooks:install",
+    "test": "bun test tests",
+    "typecheck": "bunx tsc --noEmit",
     "build:exe": "bun build --target=bun src/index.ts --compile --outfile dist/ftpc"
   },
   "devDependencies": {

@@ -1,5 +1,9 @@
 import type { Config, RemoteConfig } from "../config.ts";
-import { keyToBrowserPromptInput, type BrowserKeyPress, type BrowserPromptInput } from "./state.ts";
+import {
+  keyToBrowserPromptInput,
+  type BrowserKeyPress,
+  type BrowserPromptInput,
+} from "./state.ts";
 
 export interface RemoteSelectorEntry {
   name: string;
@@ -56,19 +60,24 @@ export function remoteEntriesFromConfig(config: Config): RemoteSelectorEntry[] {
 }
 
 function remoteDetails(remote: RemoteConfig): string[] {
-  const details = [
-    `Name: ${remote.name}`,
-    `Type: ${remote.type}`,
-  ];
+  const details = [`Name: ${remote.name}`, `Type: ${remote.type}`];
 
   switch (remote.type) {
     case "local":
       break;
     case "ftp":
-      details.push(`URL: ${redactUrlCredentials(remote.url)}`, `Username: ${remote.username}`, `Port: ${remote.port}`, `TLS: ${remote.tls ? "yes" : "no"}`);
+      details.push(
+        `URL: ${redactUrlCredentials(remote.url)}`,
+        `Username: ${remote.username}`,
+        `Port: ${remote.port}`,
+        `TLS: ${remote.tls ? "yes" : "no"}`,
+      );
       break;
     case "sftp":
-      details.push(`URL: ${redactUrlCredentials(remote.url)}`, `Port: ${remote.port}`);
+      details.push(
+        `URL: ${redactUrlCredentials(remote.url)}`,
+        `Port: ${remote.port}`,
+      );
       if (remote.username !== undefined) {
         details.push(`Username: ${remote.username}`);
       }
@@ -110,7 +119,10 @@ function redactUrlCredentials(input: string): string {
   const authorityStart = schemeIndex === -1 ? 0 : schemeIndex + 3;
   const remainder = input.slice(authorityStart);
   const authorityEndOffset = remainder.search(/[/?#]/);
-  const authorityEnd = authorityEndOffset === -1 ? input.length : authorityStart + authorityEndOffset;
+  const authorityEnd =
+    authorityEndOffset === -1
+      ? input.length
+      : authorityStart + authorityEndOffset;
   const authority = input.slice(authorityStart, authorityEnd);
   const credentialEnd = authority.lastIndexOf("@");
 
@@ -121,7 +133,10 @@ function redactUrlCredentials(input: string): string {
   return `${input.slice(0, authorityStart)}***@${authority.slice(credentialEnd + 1)}${input.slice(authorityEnd)}`;
 }
 
-export function initialRemoteSelectorState(entries: RemoteSelectorEntry[], defaultPath = "/"): RemoteSelectorState {
+export function initialRemoteSelectorState(
+  entries: RemoteSelectorEntry[],
+  defaultPath = "/",
+): RemoteSelectorState {
   return {
     title: "Select Remote",
     entries,
@@ -131,38 +146,59 @@ export function initialRemoteSelectorState(entries: RemoteSelectorEntry[], defau
   };
 }
 
-export function clampRemoteSelection(selected: number, entryCount: number): number {
+export function clampRemoteSelection(
+  selected: number,
+  entryCount: number,
+): number {
   if (entryCount <= 0) {
     return 0;
   }
   return Math.max(0, Math.min(selected, entryCount - 1));
 }
 
-export function selectedRemoteEntry(state: RemoteSelectorState): RemoteSelectorEntry | undefined {
-  return state.entries[clampRemoteSelection(state.selected, state.entries.length)];
+export function selectedRemoteEntry(
+  state: RemoteSelectorState,
+): RemoteSelectorEntry | undefined {
+  return state.entries[
+    clampRemoteSelection(state.selected, state.entries.length)
+  ];
 }
 
-export function moveRemoteSelection(state: RemoteSelectorState, delta: number): RemoteSelectorState {
+export function moveRemoteSelection(
+  state: RemoteSelectorState,
+  delta: number,
+): RemoteSelectorState {
   return {
     ...state,
-    selected: clampRemoteSelection(state.selected + delta, state.entries.length),
+    selected: clampRemoteSelection(
+      state.selected + delta,
+      state.entries.length,
+    ),
   };
 }
 
-export function selectRemoteByPrefix(state: RemoteSelectorState, prefix: string): RemoteSelectorState {
+export function selectRemoteByPrefix(
+  state: RemoteSelectorState,
+  prefix: string,
+): RemoteSelectorState {
   if (prefix === "") {
     return state;
   }
 
   const normalized = prefix.toLocaleLowerCase();
-  const index = state.entries.findIndex((entry) => entry.name.toLocaleLowerCase().startsWith(normalized));
+  const index = state.entries.findIndex((entry) =>
+    entry.name.toLocaleLowerCase().startsWith(normalized),
+  );
   if (index === -1) {
     return state;
   }
   return { ...state, selected: index };
 }
 
-export function keyToRemoteSelectorCommand(chunk: string, key: BrowserKeyPress = {}): RemoteSelectorCommand {
+export function keyToRemoteSelectorCommand(
+  chunk: string,
+  key: BrowserKeyPress = {},
+): RemoteSelectorCommand {
   if ((key.ctrl && key.name === "c") || chunk === "\x03") {
     return "quit";
   }
@@ -210,15 +246,25 @@ function appendPromptInput(input: string, value: string): string {
   return `${input}${value}`;
 }
 
-function withSearchPrompt(state: RemoteSelectorState, input: string, previousStatus: string): RemoteSelectorState {
-  return selectRemoteByPrefix({
-    ...state,
-    prompt: { type: "search", input, previousStatus },
-    status: `Search: ${input}`,
-  }, input);
+function withSearchPrompt(
+  state: RemoteSelectorState,
+  input: string,
+  previousStatus: string,
+): RemoteSelectorState {
+  return selectRemoteByPrefix(
+    {
+      ...state,
+      prompt: { type: "search", input, previousStatus },
+      status: `Search: ${input}`,
+    },
+    input,
+  );
 }
 
-function selectCurrentRemote(state: RemoteSelectorState, path: string): RemoteSelectorTransition {
+function selectCurrentRemote(
+  state: RemoteSelectorState,
+  path: string,
+): RemoteSelectorTransition {
   const entry = selectedRemoteEntry(state);
   if (entry === undefined) {
     return {
@@ -255,11 +301,12 @@ export function applyRemoteSelectorPromptInput(
           effect: { type: "none" },
         };
       }
-      const nextInput = input.type === "backspace"
-        ? prompt.input.slice(0, -1)
-        : input.type === "text"
-          ? appendPromptInput(prompt.input, input.value)
-          : prompt.input;
+      const nextInput =
+        input.type === "backspace"
+          ? prompt.input.slice(0, -1)
+          : input.type === "text"
+            ? appendPromptInput(prompt.input, input.value)
+            : prompt.input;
       return {
         state: withSearchPrompt(state, nextInput, prompt.previousStatus),
         effect: { type: "none" },
@@ -268,27 +315,42 @@ export function applyRemoteSelectorPromptInput(
     case "path": {
       if (input.type === "cancel") {
         return {
-          state: { ...state, prompt: undefined, status: "Open with path cancelled" },
+          state: {
+            ...state,
+            prompt: undefined,
+            status: "Open with path cancelled",
+          },
           effect: { type: "none" },
         };
       }
       if (input.type === "submit") {
-        return selectCurrentRemote({ ...state, prompt: undefined }, pathOrDefault(prompt.input, prompt.currentPath));
+        return selectCurrentRemote(
+          { ...state, prompt: undefined },
+          pathOrDefault(prompt.input, prompt.currentPath),
+        );
       }
-      const nextInput = input.type === "backspace"
-        ? prompt.input.slice(0, -1)
-        : input.type === "text"
-          ? appendPromptInput(prompt.input, input.value)
-          : prompt.input;
+      const nextInput =
+        input.type === "backspace"
+          ? prompt.input.slice(0, -1)
+          : input.type === "text"
+            ? appendPromptInput(prompt.input, input.value)
+            : prompt.input;
       return {
-        state: { ...state, prompt: { ...prompt, input: nextInput }, status: `Open path: ${nextInput}` },
+        state: {
+          ...state,
+          prompt: { ...prompt, input: nextInput },
+          status: `Open path: ${nextInput}`,
+        },
         effect: { type: "none" },
       };
     }
   }
 }
 
-export function promptInputFromKey(chunk: string, key: BrowserKeyPress = {}): BrowserPromptInput | undefined {
+export function promptInputFromKey(
+  chunk: string,
+  key: BrowserKeyPress = {},
+): BrowserPromptInput | undefined {
   return keyToBrowserPromptInput(chunk, key);
 }
 
@@ -302,12 +364,21 @@ export function applyRemoteSelectorCommand(
     case "down":
       return { state: moveRemoteSelection(state, 1), effect: { type: "none" } };
     case "up":
-      return { state: moveRemoteSelection(state, -1), effect: { type: "none" } };
+      return {
+        state: moveRemoteSelection(state, -1),
+        effect: { type: "none" },
+      };
     case "first":
       return { state: { ...state, selected: 0 }, effect: { type: "none" } };
     case "last":
       return {
-        state: { ...state, selected: clampRemoteSelection(state.entries.length - 1, state.entries.length) },
+        state: {
+          ...state,
+          selected: clampRemoteSelection(
+            state.entries.length - 1,
+            state.entries.length,
+          ),
+        },
         effect: { type: "none" },
       };
     case "select":
@@ -345,12 +416,20 @@ export function applyRemoteSelectorCommand(
       };
     case "search":
       return {
-        state: { ...state, prompt: { type: "search", input: "", previousStatus: state.status }, status: "Search: " },
+        state: {
+          ...state,
+          prompt: { type: "search", input: "", previousStatus: state.status },
+          status: "Search: ",
+        },
         effect: { type: "none" },
       };
     case "help":
       return {
-        state: { ...state, prompt: { type: "help", previousStatus: state.status }, status: "Remote Selector Help" },
+        state: {
+          ...state,
+          prompt: { type: "help", previousStatus: state.status },
+          status: "Remote Selector Help",
+        },
         effect: { type: "none" },
       };
     case "none":

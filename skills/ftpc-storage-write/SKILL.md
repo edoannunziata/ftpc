@@ -1,212 +1,153 @@
 ---
 name: ftpc-storage-write
-description: Full read-write access to remote storage backends (local, FTP, SFTP, S3, Azure). Upload files, delete files, create directories, in addition to listing and downloading. Use when you need to modify files on cloud storage, FTP servers, or remote filesystems.
+description: Read-write access to ftpc storage backends (local, FTP/FTPS, SFTP, S3, Azure Data Lake, Azure Blob). Upload files, delete files, and create directories in addition to read operations.
+allowed-tools: Read, Grep, Glob, Bash(bun:*)
 ---
 
-# FTPC Storage (Full Access)
+# FTPC Storage (Read-Write)
 
-Use the `ftpc` library to read and write files across storage backends.
+Use the Bun/TypeScript ftpc implementation when a task needs to modify remote
+storage. Confirm destructive actions with the user before deleting or replacing
+remote data.
 
-**This skill can modify remote storage.** Confirm destructive operations with the user.
+## Supported Connections
 
-## Supported Backends
+| Backend         | URL format                                             | Example                                            |
+| --------------- | ------------------------------------------------------ | -------------------------------------------------- |
+| Local           | `file:///path` or `/path`                              | `file:///tmp/data`                                 |
+| FTP             | `ftp://[user:pass@]host[:port]/path`                   | `ftp://ftp.example.com/pub`                        |
+| FTPS            | `ftps://[user:pass@]host[:port]/path`                  | `ftps://secure.example.com`                        |
+| SFTP            | `sftp://[user:pass@]host[:port]/path`                  | `sftp://user@host/home/user`                       |
+| S3              | `s3://bucket/path`                                     | `s3://my-bucket/reports`                           |
+| Azure Data Lake | `azure://account.dfs.core.windows.net/filesystem/path` | `azure://acct.dfs.core.windows.net/fs/base`        |
+| Azure Blob      | `blob://account.blob.core.windows.net/container/path`  | `blob://acct.blob.core.windows.net/container/base` |
 
-| Protocol | URL Format | Example |
-|----------|------------|---------|
-| Local | `file:///path` or `/path` | `/home/user/data` |
-| FTP | `ftp://[user:pass@]host[:port]/path` | `ftp://ftp.example.com/pub` |
-| FTPS | `ftps://[user:pass@]host[:port]/path` | `ftps://secure.example.com` |
-| SFTP | `sftp://[user:pass@]host[:port]/path` | `sftp://user:pass@host/data` |
-| S3 | `s3://bucket/path` | `s3://my-bucket/folder` |
-| Azure Data Lake | `azure://account.dfs.core.windows.net/fs/path` | `azure://myacct.dfs.core.windows.net/data` |
-| Azure Blob | `blob://account.blob.core.windows.net/container/path` | `blob://myacct.blob.core.windows.net/files` |
+Configured remote names from `~/.ftpcconf.toml` or `--config PATH` can be used
+wherever a URL is accepted.
 
-## Quick Start
+## CLI Operations
 
-```python
-from ftpc import connect_sync
-
-with connect_sync("s3://my-bucket") as store:
-    # List files
-    files = store.list("/")
-
-    # Download
-    store.download("/data.csv", "local.csv")
-
-    # Upload
-    store.upload("report.pdf", "/reports/report.pdf")
-
-    # Create directory
-    store.mkdir("/new-folder")
-
-    # Delete file
-    store.delete("/old-file.txt")
-```
-
-## All Operations
-
-### List Directory
-
-```python
-from ftpc import connect_sync
-
-with connect_sync("ftp://ftp.example.com") as store:
-    files = store.list("/documents")
-    for f in files:
-        print(f"{f.name}  {'DIR' if f.is_directory else f.size}")
-```
-
-### Download File
-
-```python
-with connect_sync("sftp://user:pass@host") as store:
-    store.download("/remote/file.csv", "local_file.csv")
-
-    # With progress callback
-    def progress(bytes_done: int) -> bool:
-        print(f"Downloaded {bytes_done} bytes")
-        return True  # False cancels transfer
-
-    store.download("/large.zip", "out.zip", progress)
-```
-
-### Upload File
-
-```python
-with connect_sync("s3://my-bucket") as store:
-    store.upload("local_report.pdf", "/reports/2024/report.pdf")
-
-    # With progress
-    def progress(bytes_done: int) -> bool:
-        print(f"Uploaded {bytes_done} bytes")
-        return True
-
-    store.upload("large_backup.tar.gz", "/backups/backup.tar.gz", progress)
-```
-
-### Create Directory
-
-```python
-with connect_sync("ftp://ftp.example.com") as store:
-    success = store.mkdir("/new-directory")
-    if success:
-        print("Directory created")
-```
-
-### Delete File
-
-```python
-with connect_sync("s3://my-bucket") as store:
-    success = store.delete("/obsolete-file.txt")
-    if success:
-        print("File deleted")
-```
-
-## Async Usage
-
-```python
-import asyncio
-from ftpc import Storage
-
-async def main():
-    async with Storage.connect("s3://bucket") as store:
-        await store.upload("local.txt", "/remote.txt")
-        await store.mkdir("/new-dir")
-        await store.delete("/old.txt")
-
-asyncio.run(main())
-```
-
-## Named Constructors
-
-```python
-from ftpc import Storage
-
-# S3 with credentials
-with Storage.s3(
-    bucket="my-bucket",
-    region="us-east-1",
-    access_key_id="AKIAIOSFODNN7EXAMPLE",
-    secret_access_key="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-).sync() as store:
-    store.upload("data.csv", "/uploads/data.csv")
-
-# FTP with TLS
-with Storage.ftp(
-    host="ftp.example.com",
-    username="user",
-    password="pass",
-    tls=True
-).sync() as store:
-    store.upload("report.pdf", "/reports/report.pdf")
-
-# SFTP with key auth
-with Storage.sftp(
-    host="server.example.com",
-    username="deploy",
-    key_filename="/home/user/.ssh/id_rsa"
-).sync() as store:
-    store.upload("deploy.tar.gz", "/var/releases/deploy.tar.gz")
-
-# Azure Data Lake
-with Storage.azure(
-    account_url="https://myaccount.dfs.core.windows.net",
-    filesystem="data",
-    account_key="your-account-key"
-).sync() as store:
-    store.upload("dataset.parquet", "/datasets/dataset.parquet")
-```
-
-## Using Named Remotes from Config
-
-With `~/.ftpcconf.toml`:
-
-```toml
-[prod-s3]
-type = "s3"
-bucket = "production-data"
-region = "us-east-1"
-```
-
-```python
-from ftpc.config import Config
-from ftpc.clients.s3client import S3Client
-
-config = Config.from_file()
-remote = config.remotes["prod-s3"]
-
-with S3Client(bucket_name=remote.bucket, region_name=remote.region) as client:
-    client.put("local.csv", "/uploads/data.csv")
-```
-
-## FileDescriptor Structure
-
-All `list()` calls return `List[FileDescriptor]`:
-
-```python
-@dataclass
-class FileDescriptor:
-    path: PurePath              # Full path
-    filetype: FileType          # FILE or DIRECTORY
-    size: Optional[int]         # Bytes (None for dirs)
-    modified_time: Optional[datetime]
-
-    @property
-    def name(self) -> str       # Filename only
-
-    @property
-    def is_file(self) -> bool
-
-    @property
-    def is_directory(self) -> bool
-```
-
-## Dependencies
+List before mutating so the target is clear:
 
 ```bash
-pip install ftpc            # Core (local + FTP)
-pip install ftpc[sftp]      # + SFTP
-pip install ftpc[s3]        # + S3
-pip install ftpc[azure]     # + Azure
-pip install ftpc[all]       # All backends
+bun run src/index.ts ls my-ftp /incoming
 ```
+
+Download:
+
+```bash
+bun run src/index.ts get my-sftp /remote/report.csv ./report.csv
+```
+
+Upload:
+
+```bash
+bun run src/index.ts put my-s3 ./summary.csv /reports/summary.csv
+```
+
+Create a directory or prefix:
+
+```bash
+bun run src/index.ts mkdir my-azure /reports/2026
+```
+
+Delete a file after confirmation:
+
+```bash
+bun run src/index.ts rm my-blob /reports/old.csv
+```
+
+Use `--config PATH` before the command for a non-default config file:
+
+```bash
+bun run src/index.ts --config ./ftpc.toml put my-ftp ./file.txt /incoming/file.txt
+```
+
+## TypeScript API
+
+```ts
+import { Storage } from "./src/index.ts";
+
+const store = Storage.connect(
+  "sftp://user:password@sftp.example.com/home/user",
+);
+
+try {
+  await store.upload("./local.csv", "incoming/local.csv", {
+    onProgress: ({ bytes, total }) => {
+      console.error(
+        `uploaded ${bytes}${total === undefined ? "" : `/${total}`}`,
+      );
+    },
+  });
+
+  await store.mkdir("archive");
+  await store.download("incoming/local.csv", "./roundtrip.csv");
+  await store.delete("incoming/old.csv");
+} finally {
+  await store.close();
+}
+```
+
+Named constructors are useful when credentials are supplied by the caller:
+
+```ts
+const ftp = Storage.ftp("ftp.example.com", {
+  username: "user",
+  password: "password",
+  tls: true,
+  basePath: "/incoming",
+});
+
+const lake = Storage.azure("account.dfs.core.windows.net", "filesystem", {
+  accountKey: process.env.AZURE_STORAGE_ACCOUNT_KEY,
+  basePath: "/reports",
+});
+```
+
+## Config Shape
+
+```toml
+[local]
+type = "local"
+
+[my-ftp]
+type = "ftp"
+url = "ftp.example.com"
+username = "user"
+password = "password"
+tls = true
+
+[my-sftp]
+type = "sftp"
+url = "sftp.example.com"
+username = "user"
+password = "password"
+# key_filename = "~/.ssh/id_rsa"
+
+[my-s3]
+type = "s3"
+url = "s3://my-bucket/prefix"
+region_name = "us-east-1"
+endpoint_url = "https://s3.amazonaws.com"
+aws_access_key_id = "ACCESS_KEY"
+aws_secret_access_key = "SECRET_KEY"
+
+[my-azure]
+type = "azure"
+url = "account.dfs.core.windows.net"
+filesystem = "filesystem"
+connection_string = "DefaultEndpointsProtocol=https;AccountName=..."
+
+[my-blob]
+type = "blob"
+url = "account.blob.core.windows.net"
+container = "container"
+account_key = "ACCOUNT_KEY"
+```
+
+## Safety Notes
+
+Prefer listing the target path immediately before upload, delete, or directory
+creation. Treat `rm` and `StorageSession.delete()` as destructive. For uploads,
+check whether the destination path already exists when overwriting would matter.

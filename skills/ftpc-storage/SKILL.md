@@ -1,163 +1,134 @@
 ---
 name: ftpc-storage
-description: Read files from remote storage backends (local, FTP, SFTP, S3, Azure). List directories, download files, inspect metadata. Use for reading data from cloud storage, FTP servers, or remote filesystems without making changes.
-allowed-tools: Read, Grep, Glob, Bash(python3:*)
+description: Read files from ftpc storage backends (local, FTP/FTPS, SFTP, S3, Azure Data Lake, Azure Blob). List directories, download files, and inspect metadata without modifying remote state.
+allowed-tools: Read, Grep, Glob, Bash(bun:*)
 ---
 
 # FTPC Storage (Read-Only)
 
-Use the `ftpc` library to read files from various storage backends.
+Use the Bun/TypeScript ftpc implementation to inspect remote storage without
+making remote changes. Run commands from the repository root unless the caller
+has installed or built `ftpc` elsewhere.
 
-## Supported Backends
+## Supported Connections
 
-| Protocol | URL Format | Example |
-|----------|------------|---------|
-| Local | `file:///path` or `/path` | `/home/user/data` |
-| FTP | `ftp://[user:pass@]host[:port]/path` | `ftp://ftp.example.com/pub` |
-| FTPS | `ftps://[user:pass@]host[:port]/path` | `ftps://secure.example.com` |
-| SFTP | `sftp://[user:pass@]host[:port]/path` | `sftp://user:pass@host/data` |
-| S3 | `s3://bucket/path` | `s3://my-bucket/folder` |
-| Azure Data Lake | `azure://account.dfs.core.windows.net/fs/path` | `azure://myacct.dfs.core.windows.net/data` |
-| Azure Blob | `blob://account.blob.core.windows.net/container/path` | `blob://myacct.blob.core.windows.net/files` |
+| Backend         | URL format                                             | Example                                            |
+| --------------- | ------------------------------------------------------ | -------------------------------------------------- |
+| Local           | `file:///path` or `/path`                              | `file:///tmp/data`                                 |
+| FTP             | `ftp://[user:pass@]host[:port]/path`                   | `ftp://ftp.example.com/pub`                        |
+| FTPS            | `ftps://[user:pass@]host[:port]/path`                  | `ftps://secure.example.com`                        |
+| SFTP            | `sftp://[user:pass@]host[:port]/path`                  | `sftp://user@host/home/user`                       |
+| S3              | `s3://bucket/path`                                     | `s3://my-bucket/reports`                           |
+| Azure Data Lake | `azure://account.dfs.core.windows.net/filesystem/path` | `azure://acct.dfs.core.windows.net/fs/base`        |
+| Azure Blob      | `blob://account.blob.core.windows.net/container/path`  | `blob://acct.blob.core.windows.net/container/base` |
 
-## Quick Start
+Configured remote names from `~/.ftpcconf.toml` or `--config PATH` can be used
+wherever a URL is accepted.
 
-```python
-from ftpc import connect_sync
+## CLI Reads
 
-# Connect using URL and list files
-with connect_sync("s3://my-bucket") as store:
-    files = store.list("/")
-    for f in files:
-        print(f"{f.name}  {'DIR' if f.is_directory else f.size}")
-```
-
-## Available Operations
-
-### List Directory
-
-```python
-from ftpc import connect_sync
-
-with connect_sync("ftp://ftp.example.com") as store:
-    # List root (base path from URL)
-    files = store.list()
-
-    # List specific path
-    files = store.list("/documents")
-
-    # Each file is a FileDescriptor with:
-    # - name: str (filename only)
-    # - path: PurePath (full path)
-    # - is_file: bool
-    # - is_directory: bool
-    # - size: Optional[int] (bytes, None for directories)
-    # - modified_time: Optional[datetime]
-```
-
-### Download File
-
-```python
-from ftpc import connect_sync
-
-with connect_sync("sftp://user:pass@host") as store:
-    # Download to local path
-    store.download("/remote/file.csv", "local_file.csv")
-
-    # With progress tracking
-    def progress(bytes_done: int) -> bool:
-        print(f"Downloaded {bytes_done} bytes")
-        return True  # Return False to cancel
-
-    store.download("/large_file.zip", "output.zip", progress)
-```
-
-## Using Named Remotes from Config
-
-If `~/.ftpcconf.toml` exists with configured remotes:
-
-```toml
-# ~/.ftpcconf.toml
-[my-s3]
-type = "s3"
-bucket = "my-bucket"
-region = "us-east-1"
-
-[work-ftp]
-type = "ftp"
-url = "ftp.company.com"
-username = "user"
-password = "secret"
-```
-
-Load config and create client:
-
-```python
-from ftpc.config import Config
-from ftpc.clients.s3client import S3Client
-
-config = Config.from_file()  # Loads ~/.ftpcconf.toml
-remote = config.remotes["my-s3"]
-
-# Create client from config (varies by type)
-with S3Client(bucket_name=remote.bucket, region_name=remote.region) as client:
-    files = client.ls("/")
-```
-
-## Async Usage
-
-```python
-import asyncio
-from ftpc import Storage
-
-async def main():
-    async with Storage.connect("s3://bucket") as store:
-        files = await store.list("/")
-        await store.download("/data.csv", "local.csv")
-
-asyncio.run(main())
-```
-
-## Named Constructors (Explicit Configuration)
-
-```python
-from ftpc import Storage
-
-# S3 with explicit credentials
-with Storage.s3(
-    bucket="my-bucket",
-    region="us-east-1",
-    access_key_id="AKIAIOSFODNN7EXAMPLE",
-    secret_access_key="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-).sync() as store:
-    files = store.list("/")
-
-# FTP with explicit config
-with Storage.ftp(
-    host="ftp.example.com",
-    username="user",
-    password="pass",
-    tls=True  # Use FTPS
-).sync() as store:
-    store.download("/file.txt", "local.txt")
-
-# SFTP with key file
-with Storage.sftp(
-    host="server.example.com",
-    username="deploy",
-    key_filename="/home/user/.ssh/id_rsa"
-).sync() as store:
-    files = store.list("/var/data")
-```
-
-## Dependencies
-
-Install required backends:
+List configured remotes:
 
 ```bash
-pip install ftpc            # Core (local + FTP)
-pip install ftpc[sftp]      # + SFTP (paramiko)
-pip install ftpc[s3]        # + S3 (boto3)
-pip install ftpc[azure]     # + Azure (azure-storage-*)
-pip install ftpc[all]       # All backends
+bun run src/index.ts remotes
 ```
+
+List a directory:
+
+```bash
+bun run src/index.ts ls my-s3 /reports
+bun run src/index.ts ls s3://my-bucket/reports
+```
+
+Download a file:
+
+```bash
+bun run src/index.ts get my-sftp /remote/report.csv ./report.csv
+```
+
+Use `--config PATH` before the command when a non-default config file is needed:
+
+```bash
+bun run src/index.ts --config ./ftpc.toml ls my-azure /incoming
+```
+
+## TypeScript API
+
+```ts
+import { Storage } from "./src/index.ts";
+
+const store = Storage.connect(
+  "blob://account.blob.core.windows.net/container/reports",
+);
+
+try {
+  const entries = await store.list();
+  for (const entry of entries) {
+    console.log({
+      path: entry.path,
+      name: entry.name,
+      type: entry.type,
+      size: entry.size,
+      modifiedTime: entry.modifiedTime,
+    });
+  }
+
+  await store.download("daily.csv", "./daily.csv", {
+    onProgress: ({ bytes, total }) => {
+      console.error(
+        `downloaded ${bytes}${total === undefined ? "" : `/${total}`}`,
+      );
+    },
+  });
+} finally {
+  await store.close();
+}
+```
+
+## Config Shape
+
+```toml
+[local]
+type = "local"
+
+[my-ftp]
+type = "ftp"
+url = "ftp.example.com"
+username = "user"
+password = "password"
+tls = true
+
+[my-sftp]
+type = "sftp"
+url = "sftp.example.com"
+username = "user"
+password = "password"
+# key_filename = "~/.ssh/id_rsa"
+
+[my-s3]
+type = "s3"
+url = "s3://my-bucket/prefix"
+region_name = "us-east-1"
+endpoint_url = "https://s3.amazonaws.com"
+aws_access_key_id = "ACCESS_KEY"
+aws_secret_access_key = "SECRET_KEY"
+
+[my-azure]
+type = "azure"
+url = "account.dfs.core.windows.net"
+filesystem = "filesystem"
+connection_string = "DefaultEndpointsProtocol=https;AccountName=..."
+
+[my-blob]
+type = "blob"
+url = "account.blob.core.windows.net"
+container = "container"
+account_key = "ACCOUNT_KEY"
+```
+
+## Read-Only Boundaries
+
+Prefer `remotes`, `ls`, `get`, `Storage.connect().list()`, and
+`Storage.connect().download()` in this skill. Do not call `put`, `rm`, `mkdir`,
+`upload`, or `delete`; use the `ftpc-storage-write` skill when remote mutation
+is required.

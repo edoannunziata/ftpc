@@ -8,7 +8,11 @@ import type { ConnectionOptions as TlsConnectionOptions } from "node:tls";
 import type { ProxyConfig } from "../config.ts";
 import { baseName, normalizeRemotePath } from "../paths.ts";
 import { connectSocks5, type Socks5Connector } from "../socks5.ts";
-import type { FileDescriptor, StorageClient, TransferOptions } from "../types.ts";
+import type {
+  FileDescriptor,
+  StorageClient,
+  TransferOptions,
+} from "../types.ts";
 import { ListingError, TransferError } from "../errors.ts";
 
 export interface FtpBackend {
@@ -26,7 +30,14 @@ export interface FtpBackend {
   uploadFrom(localPath: string, remotePath: string): Promise<unknown>;
   remove(path: string, ignoreErrorCodes?: boolean): Promise<unknown>;
   send(command: string): Promise<unknown>;
-  trackProgress(handler?: (info: { bytes: number; bytesOverall: number; name?: string; type?: string }) => void): void;
+  trackProgress(
+    handler?: (info: {
+      bytes: number;
+      bytesOverall: number;
+      name?: string;
+      type?: string;
+    }) => void,
+  ): void;
   close(): void;
 }
 
@@ -97,13 +108,16 @@ class FtpSocksSocket extends Duplex {
       proxy: this.proxy,
       targetHost,
       targetPort,
-    }).then((socket) => {
-      this.attach(socket);
-      this.emit("connect");
-      callback?.();
-    }, (error: Error) => {
-      this.destroy(error);
-    });
+    }).then(
+      (socket) => {
+        this.attach(socket);
+        this.emit("connect");
+        callback?.();
+      },
+      (error: Error) => {
+        this.destroy(error);
+      },
+    );
 
     return this;
   }
@@ -128,7 +142,11 @@ class FtpSocksSocket extends Duplex {
 
   override _read(): void {}
 
-  override _write(chunk: Buffer, encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+  override _write(
+    chunk: Buffer,
+    encoding: BufferEncoding,
+    callback: (error?: Error | null) => void,
+  ): void {
     if (this.inner === undefined) {
       callback(new Error("SOCKS5 FTP socket is not connected"));
       return;
@@ -144,7 +162,10 @@ class FtpSocksSocket extends Duplex {
     this.inner.end(callback);
   }
 
-  override _destroy(error: Error | null, callback: (error?: Error | null) => void): void {
+  override _destroy(
+    error: Error | null,
+    callback: (error?: Error | null) => void,
+  ): void {
     this.inner?.destroy();
     callback(error);
   }
@@ -176,7 +197,10 @@ class FtpSocksSocket extends Duplex {
   }
 }
 
-export function createFtpSocksSocket(proxy: ProxyConfig, connector: Socks5Connector = connectSocks5): Socket {
+export function createFtpSocksSocket(
+  proxy: ProxyConfig,
+  connector: Socks5Connector = connectSocks5,
+): Socket {
   return new FtpSocksSocket(proxy, connector) as unknown as Socket;
 }
 
@@ -208,8 +232,13 @@ type PatchedFtpUploadSocket = Socket & {
   write: (...args: unknown[]) => boolean;
 };
 
-function splitEndArgs(args: unknown[]): { chunk?: unknown; encoding?: unknown; callback?: () => void } {
-  const callback = typeof args.at(-1) === "function" ? args.pop() as () => void : undefined;
+function splitEndArgs(args: unknown[]): {
+  chunk?: unknown;
+  encoding?: unknown;
+  callback?: () => void;
+} {
+  const callback =
+    typeof args.at(-1) === "function" ? (args.pop() as () => void) : undefined;
   return {
     chunk: args[0],
     encoding: args[1],
@@ -218,7 +247,12 @@ function splitEndArgs(args: unknown[]): { chunk?: unknown; encoding?: unknown; c
 }
 
 export function patchFtpsUploadSocketEnd(socket: unknown): void {
-  if (socket === undefined || socket === null || typeof socket !== "object" || !("encrypted" in socket)) {
+  if (
+    socket === undefined ||
+    socket === null ||
+    typeof socket !== "object" ||
+    !("encrypted" in socket)
+  ) {
     return;
   }
 
@@ -256,7 +290,10 @@ export function patchFtpsUploadSocketEnd(socket: unknown): void {
   };
 
   dataSocket.write = (...args: unknown[]): boolean => {
-    const callback = typeof args.at(-1) === "function" ? args.pop() as (error?: Error | null) => void : undefined;
+    const callback =
+      typeof args.at(-1) === "function"
+        ? (args.pop() as (error?: Error | null) => void)
+        : undefined;
     pendingWrites += 1;
     try {
       return originalWrite(...args, (error?: Error | null) => {
@@ -271,14 +308,19 @@ export function patchFtpsUploadSocketEnd(socket: unknown): void {
     }
   };
 
-  (dataSocket as unknown as { end: SocketEnd }).end = (...args: unknown[]): unknown => {
+  (dataSocket as unknown as { end: SocketEnd }).end = (
+    ...args: unknown[]
+  ): unknown => {
     const { chunk, encoding, callback } = splitEndArgs([...args]);
     endRequested = true;
     endCallback = callback;
 
     if (chunk !== undefined) {
       if (typeof encoding === "string") {
-        dataSocket.write(chunk as string | Uint8Array, encoding as BufferEncoding);
+        dataSocket.write(
+          chunk as string | Uint8Array,
+          encoding as BufferEncoding,
+        );
       } else {
         dataSocket.write(chunk as string | Uint8Array);
       }
@@ -290,8 +332,12 @@ export function patchFtpsUploadSocketEnd(socket: unknown): void {
 }
 
 async function waitForSecureUploadSocket(dataSocket: Socket): Promise<void> {
-  const getCipher = (dataSocket as Socket & { getCipher?: () => unknown }).getCipher;
-  if (typeof getCipher !== "function" || getCipher.call(dataSocket) !== undefined) {
+  const getCipher = (dataSocket as Socket & { getCipher?: () => unknown })
+    .getCipher;
+  if (
+    typeof getCipher !== "function" ||
+    getCipher.call(dataSocket) !== undefined
+  ) {
     return;
   }
 
@@ -320,7 +366,9 @@ async function waitForSecureUploadSocket(dataSocket: Socket): Promise<void> {
   });
 }
 
-async function prepareFtpsUploadTransfer(backend: BasicFtpInternals): Promise<void> {
+async function prepareFtpsUploadTransfer(
+  backend: BasicFtpInternals,
+): Promise<void> {
   const tlsOptions = backend.ftp.tlsOptions as TlsConnectionOptions;
   const originalCheckServerIdentity = tlsOptions.checkServerIdentity;
   // Bun validates FTPS passive data sockets against the TCP peer when wrapping
@@ -337,7 +385,10 @@ async function prepareFtpsUploadTransfer(backend: BasicFtpInternals): Promise<vo
   }
 }
 
-async function writeFileToSocket(localPath: string, dataSocket: Socket): Promise<void> {
+async function writeFileToSocket(
+  localPath: string,
+  dataSocket: Socket,
+): Promise<void> {
   const fd = openSync(localPath, "r");
   const buffer = Buffer.allocUnsafe(64 * 1024);
   try {
@@ -360,12 +411,18 @@ async function finishUploadDataSocket(dataSocket: Socket): Promise<void> {
   });
 }
 
-async function uploadLocalFileWithPreparedTransfer(backend: BasicFtpInternals, localPath: string, remotePath: string): Promise<unknown> {
+async function uploadLocalFileWithPreparedTransfer(
+  backend: BasicFtpInternals,
+  localPath: string,
+  remotePath: string,
+): Promise<unknown> {
   const validPath = await backend.protectWhitespace(remotePath);
   await prepareFtpsUploadTransfer(backend);
   const dataSocket = backend.ftp.dataSocket;
   if (dataSocket === undefined) {
-    throw new Error("Upload will be initiated but no data connection is available.");
+    throw new Error(
+      "Upload will be initiated but no data connection is available.",
+    );
   }
 
   let task: FtpTask | undefined;
@@ -385,7 +442,12 @@ async function uploadLocalFileWithPreparedTransfer(backend: BasicFtpInternals, l
   };
 
   const maybeResolve = (): void => {
-    if (settled || task === undefined || controlResponse === undefined || !dataDone) {
+    if (
+      settled ||
+      task === undefined ||
+      controlResponse === undefined ||
+      !dataDone
+    ) {
       return;
     }
     settled = true;
@@ -435,19 +497,37 @@ async function uploadLocalFileWithPreparedTransfer(backend: BasicFtpInternals, l
 
 function patchBasicFtpUpload(backend: BasicFtpClient): void {
   const originalUploadFrom = backend.uploadFrom.bind(backend);
-  backend.uploadFrom = (async (...args: Parameters<BasicFtpClient["uploadFrom"]>) => {
+  backend.uploadFrom = (async (
+    ...args: Parameters<BasicFtpClient["uploadFrom"]>
+  ) => {
     const [source, remotePath] = args;
-    if (typeof source === "string" && typeof remotePath === "string" && backend.ftp.hasTLS) {
-      return uploadLocalFileWithPreparedTransfer(backend as BasicFtpInternals, source, remotePath);
+    if (
+      typeof source === "string" &&
+      typeof remotePath === "string" &&
+      backend.ftp.hasTLS
+    ) {
+      return uploadLocalFileWithPreparedTransfer(
+        backend as BasicFtpInternals,
+        source,
+        remotePath,
+      );
     }
     return originalUploadFrom(...args);
   }) as BasicFtpClient["uploadFrom"];
 }
 
-function createBasicFtpBackend(proxy?: ProxyConfig, proxyConnector?: Socks5Connector): FtpBackend {
-  const backend = new BasicFtpClient(FTP_TIMEOUT_MS, proxy === undefined ? undefined : {
-    allowSeparateTransferHost: true,
-  });
+function createBasicFtpBackend(
+  proxy?: ProxyConfig,
+  proxyConnector?: Socks5Connector,
+): FtpBackend {
+  const backend = new BasicFtpClient(
+    FTP_TIMEOUT_MS,
+    proxy === undefined
+      ? undefined
+      : {
+          allowSeparateTransferHost: true,
+        },
+  );
   patchBasicFtpUpload(backend);
   if (proxy !== undefined) {
     backend.ftp._newSocket = () => createFtpSocksSocket(proxy, proxyConnector);
@@ -460,7 +540,9 @@ function preferPlainListFallback(backend: FtpBackend): void {
     return;
   }
 
-  const commands = backend.availableListCommands.filter((command) => command !== "LIST -a");
+  const commands = backend.availableListCommands.filter(
+    (command) => command !== "LIST -a",
+  );
   if (!commands.includes("LIST")) {
     commands.push("LIST");
   }
@@ -502,7 +584,14 @@ function normalizedYear(value: string): number | undefined {
   return parsed;
 }
 
-function utcDate(year: number, month: number, day: number, hour = 0, minute = 0, second = 0): Date | undefined {
+function utcDate(
+  year: number,
+  month: number,
+  day: number,
+  hour = 0,
+  minute = 0,
+  second = 0,
+): Date | undefined {
   const date = new Date(Date.UTC(year, month, day, hour, minute, second));
   if (
     date.getUTCFullYear() !== year ||
@@ -517,95 +606,118 @@ function utcDate(year: number, month: number, day: number, hour = 0, minute = 0,
   return date;
 }
 
+function capture(match: RegExpMatchArray, index: number): string {
+  const value = match[index];
+  if (value === undefined) {
+    throw new Error(`Missing FTP date capture group ${index}`);
+  }
+  return value;
+}
+
 function parseFtpRawModifiedAt(rawModifiedAt: string): Date | undefined {
   const value = rawModifiedAt.trim().replace(/\s+/g, " ");
   if (value === "") {
     return undefined;
   }
 
-  let match = value.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\.\d+)?$/);
+  let match = value.match(
+    /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\.\d+)?$/,
+  );
   if (match !== null) {
     return utcDate(
-      Number.parseInt(match[1], 10),
-      Number.parseInt(match[2], 10) - 1,
-      Number.parseInt(match[3], 10),
-      Number.parseInt(match[4], 10),
-      Number.parseInt(match[5], 10),
-      Number.parseInt(match[6], 10),
+      Number.parseInt(capture(match, 1), 10),
+      Number.parseInt(capture(match, 2), 10) - 1,
+      Number.parseInt(capture(match, 3), 10),
+      Number.parseInt(capture(match, 4), 10),
+      Number.parseInt(capture(match, 5), 10),
+      Number.parseInt(capture(match, 6), 10),
     );
   }
 
-  match = value.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  match = value.match(
+    /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/,
+  );
   if (match !== null) {
     return utcDate(
-      Number.parseInt(match[1], 10),
-      Number.parseInt(match[2], 10) - 1,
-      Number.parseInt(match[3], 10),
-      Number.parseInt(match[4], 10),
-      Number.parseInt(match[5], 10),
-      match[6] === undefined ? 0 : Number.parseInt(match[6], 10),
+      Number.parseInt(capture(match, 1), 10),
+      Number.parseInt(capture(match, 2), 10) - 1,
+      Number.parseInt(capture(match, 3), 10),
+      Number.parseInt(capture(match, 4), 10),
+      Number.parseInt(capture(match, 5), 10),
+      match[6] === undefined ? 0 : Number.parseInt(capture(match, 6), 10),
     );
   }
 
   match = value.match(/^([A-Za-z]{3})\s+(\d{1,2})\s+(\d{4})$/);
   if (match !== null) {
-    const month = monthIndex(match[1]);
+    const month = monthIndex(capture(match, 1));
     if (month !== undefined) {
-      return utcDate(Number.parseInt(match[3], 10), month, Number.parseInt(match[2], 10));
+      return utcDate(
+        Number.parseInt(capture(match, 3), 10),
+        month,
+        Number.parseInt(capture(match, 2), 10),
+      );
     }
   }
 
   match = value.match(/^([A-Za-z]{3})\s+(\d{1,2})\s+(\d{1,2}):(\d{2})$/);
   if (match !== null) {
-    const month = monthIndex(match[1]);
+    const month = monthIndex(capture(match, 1));
     if (month !== undefined) {
       return utcDate(
         new Date().getUTCFullYear(),
         month,
-        Number.parseInt(match[2], 10),
-        Number.parseInt(match[3], 10),
-        Number.parseInt(match[4], 10),
+        Number.parseInt(capture(match, 2), 10),
+        Number.parseInt(capture(match, 3), 10),
+        Number.parseInt(capture(match, 4), 10),
       );
     }
   }
 
   match = value.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})$/);
   if (match !== null) {
-    const month = monthIndex(match[2]);
+    const month = monthIndex(capture(match, 2));
     if (month !== undefined) {
-      return utcDate(Number.parseInt(match[3], 10), month, Number.parseInt(match[1], 10));
+      return utcDate(
+        Number.parseInt(capture(match, 3), 10),
+        month,
+        Number.parseInt(capture(match, 1), 10),
+      );
     }
   }
 
   match = value.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{1,2}):(\d{2})$/);
   if (match !== null) {
-    const month = monthIndex(match[2]);
+    const month = monthIndex(capture(match, 2));
     if (month !== undefined) {
       return utcDate(
         new Date().getUTCFullYear(),
         month,
-        Number.parseInt(match[1], 10),
-        Number.parseInt(match[3], 10),
-        Number.parseInt(match[4], 10),
+        Number.parseInt(capture(match, 1), 10),
+        Number.parseInt(capture(match, 3), 10),
+        Number.parseInt(capture(match, 4), 10),
       );
     }
   }
 
-  match = value.match(/^(\d{2})-(\d{2})-(\d{2}|\d{4})\s+(\d{1,2}):(\d{2})(AM|PM)$/i);
+  match = value.match(
+    /^(\d{2})-(\d{2})-(\d{2}|\d{4})\s+(\d{1,2}):(\d{2})(AM|PM)$/i,
+  );
   if (match !== null) {
-    const year = normalizedYear(match[3]);
+    const year = normalizedYear(capture(match, 3));
     if (year !== undefined) {
-      const hour = Number.parseInt(match[4], 10);
+      const hour = Number.parseInt(capture(match, 4), 10);
       if (hour < 1 || hour > 12) {
         return undefined;
       }
-      const hour24 = (hour % 12) + (match[6].toUpperCase() === "PM" ? 12 : 0);
+      const hour24 =
+        (hour % 12) + (capture(match, 6).toUpperCase() === "PM" ? 12 : 0);
       return utcDate(
         year,
-        Number.parseInt(match[1], 10) - 1,
-        Number.parseInt(match[2], 10),
+        Number.parseInt(capture(match, 1), 10) - 1,
+        Number.parseInt(capture(match, 2), 10),
         hour24,
-        Number.parseInt(match[5], 10),
+        Number.parseInt(capture(match, 5), 10),
       );
     }
   }
@@ -645,7 +757,8 @@ export class FtpClient implements StorageClient {
     this.proxy = options.proxy;
     this.proxyConnector = options.proxyConnector;
     this.displayName = options.name ?? options.host;
-    this.backend = options.backend ?? createBasicFtpBackend(this.proxy, this.proxyConnector);
+    this.backend =
+      options.backend ?? createBasicFtpBackend(this.proxy, this.proxyConnector);
   }
 
   name(): string {
@@ -663,10 +776,12 @@ export class FtpClient implements StorageClient {
       user: this.username,
       password: this.password,
       secure: this.tls,
-      secureOptions: this.tls ? {
-        host: this.host,
-        servername: this.host,
-      } : undefined,
+      secureOptions: this.tls
+        ? {
+            host: this.host,
+            servername: this.host,
+          }
+        : undefined,
     });
     preferPlainListFallback(this.backend);
     this.connected = true;
@@ -689,13 +804,22 @@ export class FtpClient implements StorageClient {
   async list(path: string): Promise<FileDescriptor[]> {
     try {
       await this.ensureConnected();
-      return (await this.backend.list(formatPath(path))).map(descriptorFromInfo);
+      return (await this.backend.list(formatPath(path))).map(
+        descriptorFromInfo,
+      );
     } catch (error) {
-      throw new ListingError(`Failed to list directory '${path}': ${(error as Error).message}`, { cause: error });
+      throw new ListingError(
+        `Failed to list directory '${path}': ${(error as Error).message}`,
+        { cause: error },
+      );
     }
   }
 
-  async download(remotePath: string, localPath: string, options: TransferOptions = {}): Promise<void> {
+  async download(
+    remotePath: string,
+    localPath: string,
+    options: TransferOptions = {},
+  ): Promise<void> {
     const cleanupAbort = this.watchAbort(options.signal);
     try {
       await this.ensureConnected();
@@ -708,14 +832,21 @@ export class FtpClient implements StorageClient {
       if (options.signal?.aborted) {
         options.signal.throwIfAborted();
       }
-      throw new TransferError(`Failed to download '${remotePath}' from FTP host '${this.host}': ${(error as Error).message}`, { cause: error });
+      throw new TransferError(
+        `Failed to download '${remotePath}' from FTP host '${this.host}': ${(error as Error).message}`,
+        { cause: error },
+      );
     } finally {
       this.backend.trackProgress();
       cleanupAbort();
     }
   }
 
-  async upload(localPath: string, remotePath: string, options: TransferOptions = {}): Promise<void> {
+  async upload(
+    localPath: string,
+    remotePath: string,
+    options: TransferOptions = {},
+  ): Promise<void> {
     const cleanupAbort = this.watchAbort(options.signal);
     try {
       await this.ensureConnected();
@@ -728,7 +859,10 @@ export class FtpClient implements StorageClient {
       if (options.signal?.aborted) {
         options.signal.throwIfAborted();
       }
-      throw new TransferError(`Failed to upload '${localPath}' to FTP host '${this.host}': ${(error as Error).message}`, { cause: error });
+      throw new TransferError(
+        `Failed to upload '${localPath}' to FTP host '${this.host}': ${(error as Error).message}`,
+        { cause: error },
+      );
     } finally {
       this.backend.trackProgress();
       cleanupAbort();

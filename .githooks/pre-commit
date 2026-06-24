@@ -1,0 +1,60 @@
+#!/usr/bin/env bun
+
+function stagedFiles(diffFilter?: string): string[] {
+  const cmd = ["git", "diff", "--cached", "--name-only", "-z"];
+  if (diffFilter !== undefined) {
+    cmd.push(`--diff-filter=${diffFilter}`);
+  }
+
+  const diff = Bun.spawnSync({
+    cmd,
+    stdout: "pipe",
+    stderr: "inherit",
+  });
+
+  if (diff.exitCode !== 0) {
+    process.exit(diff.exitCode);
+  }
+
+  return new TextDecoder()
+    .decode(diff.stdout)
+    .split("\0")
+    .filter((fileName) => fileName.length > 0);
+}
+
+const allStagedFiles = stagedFiles();
+
+if (allStagedFiles.length === 0) {
+  process.exit(0);
+}
+
+const formatFiles = stagedFiles("ACMR");
+
+function run(cmd: string[]): void {
+  const result = Bun.spawnSync({
+    cmd,
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+
+  if (result.exitCode !== 0) {
+    process.exit(result.exitCode);
+  }
+}
+
+if (formatFiles.length > 0) {
+  run([
+    "bunx",
+    "prettier",
+    "--write",
+    "--ignore-unknown",
+    "--ignore-path",
+    ".prettierignore",
+    "--",
+    ...formatFiles,
+  ]);
+  run(["git", "add", "--", ...formatFiles]);
+}
+
+run(["bunx", "tsc", "--noEmit"]);

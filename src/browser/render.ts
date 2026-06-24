@@ -338,7 +338,11 @@ export function overlayDialog(
     if (target < 0 || target >= output.length) {
       continue;
     }
-    output[target] = overlayStyledLine(output[target], width, x, dialogRow);
+    const line = output[target];
+    if (line === undefined) {
+      continue;
+    }
+    output[target] = overlayStyledLine(line, width, x, dialogRow);
   }
 
   return output;

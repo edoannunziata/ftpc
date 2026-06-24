@@ -2,14 +2,21 @@ import { writeFile } from "node:fs/promises";
 import type { Socket } from "node:net";
 import { connect as connectTls } from "node:tls";
 import { baseName, normalizeRemotePath, stripLeadingSlash } from "../paths.ts";
-import type { FileDescriptor, StorageClient, TransferOptions } from "../types.ts";
+import type {
+  FileDescriptor,
+  StorageClient,
+  TransferOptions,
+} from "../types.ts";
 import { ListingError, TransferError } from "../errors.ts";
 import type { ProxyConfig } from "../config.ts";
 import { throwProxyUnsupported } from "../proxy.ts";
 import { connectSocks5, type Socks5Connector } from "../socks5.ts";
 
 type S3WriteData = Parameters<Bun.S3Client["write"]>[1];
-type S3Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+type S3Fetch = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
 
 export interface S3ObjectSummary {
   key: string;
@@ -25,7 +32,13 @@ export interface S3ListResponse {
 }
 
 export interface S3Backend {
-  list(input?: { prefix?: string; delimiter?: string; continuationToken?: string } | null): Promise<S3ListResponse>;
+  list(
+    input?: {
+      prefix?: string;
+      delimiter?: string;
+      continuationToken?: string;
+    } | null,
+  ): Promise<S3ListResponse>;
   file(path: string): { arrayBuffer(): Promise<ArrayBuffer> };
   write(path: string, data: S3WriteData): Promise<number>;
   delete(path: string): Promise<void>;
@@ -55,7 +68,10 @@ function createBunS3Backend(options: S3ClientOptions): S3Backend {
 }
 
 function hasExplicitCredentials(options: S3ClientOptions): boolean {
-  return options.awsAccessKeyId !== undefined || options.awsSecretAccessKey !== undefined;
+  return (
+    options.awsAccessKeyId !== undefined ||
+    options.awsSecretAccessKey !== undefined
+  );
 }
 
 function createDefaultS3Backend(options: S3ClientOptions): S3Backend {
@@ -64,7 +80,11 @@ function createDefaultS3Backend(options: S3ClientOptions): S3Backend {
   }
 
   if (options.proxy !== undefined) {
-    throwProxyUnsupported("s3", options.name ?? `S3:${options.bucketName}`, options.proxy);
+    throwProxyUnsupported(
+      "s3",
+      options.name ?? `S3:${options.bucketName}`,
+      options.proxy,
+    );
   }
 
   return createBunS3Backend(options);
@@ -74,19 +94,20 @@ function decodeXml(text: string): string {
   return text
     .replaceAll("&lt;", "<")
     .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", "\"")
+    .replaceAll("&quot;", '"')
     .replaceAll("&apos;", "'")
     .replaceAll("&amp;", "&");
 }
 
 function firstXmlValue(xml: string, tag: string): string | undefined {
   const match = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
-  return match === null ? undefined : decodeXml(match[1]);
+  return match?.[1] === undefined ? undefined : decodeXml(match[1]);
 }
 
 function xmlSections(xml: string, tag: string): string[] {
   return [...xml.matchAll(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "g"))]
-    .map((match) => match[1]);
+    .map((match) => match[1])
+    .filter((section): section is string => section !== undefined);
 }
 
 function encodeKey(key: string): string {
@@ -102,7 +123,8 @@ function unsignedS3BaseUrl(options: S3ClientOptions): string {
     return `${trimTrailingSlash(options.endpointUrl)}/${encodeURIComponent(options.bucketName)}`;
   }
 
-  const regionPart = options.regionName === undefined ? "" : `.${options.regionName}`;
+  const regionPart =
+    options.regionName === undefined ? "" : `.${options.regionName}`;
   return `https://${options.bucketName}.s3${regionPart}.amazonaws.com`;
 }
 
@@ -160,7 +182,11 @@ function targetPort(url: URL): number {
 
 function hostHeader(url: URL): string {
   const port = url.port;
-  if (port === "" || (url.protocol === "https:" && port === "443") || (url.protocol === "http:" && port === "80")) {
+  if (
+    port === "" ||
+    (url.protocol === "https:" && port === "443") ||
+    (url.protocol === "http:" && port === "80")
+  ) {
     return url.hostname;
   }
   return `${url.hostname}:${port}`;
@@ -186,7 +212,11 @@ function waitForSecureConnect(socket: Socket): Promise<void> {
   });
 }
 
-async function openSocksHttpSocket(url: URL, proxy: ProxyConfig, connector: Socks5Connector): Promise<Socket> {
+async function openSocksHttpSocket(
+  url: URL,
+  proxy: ProxyConfig,
+  connector: Socks5Connector,
+): Promise<Socket> {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`Unsupported S3 proxy URL protocol '${url.protocol}'`);
   }
@@ -209,16 +239,23 @@ async function openSocksHttpSocket(url: URL, proxy: ProxyConfig, connector: Sock
   return tlsSocket;
 }
 
-async function bodyToBytes(body: RequestInit["body"] | ArrayBuffer | undefined): Promise<Uint8Array> {
+async function bodyToBytes(
+  body: RequestInit["body"] | ArrayBuffer | undefined,
+): Promise<Uint8Array> {
   if (body === undefined || body === null) {
     return new Uint8Array();
   }
 
-  const buffer = await new Response(body as ConstructorParameters<typeof Response>[0]).arrayBuffer();
+  const buffer = await new Response(
+    body as ConstructorParameters<typeof Response>[0],
+  ).arrayBuffer();
   return new Uint8Array(buffer);
 }
 
-async function fetchBodyBytes(input: string | URL | Request, init?: RequestInit): Promise<Uint8Array> {
+async function fetchBodyBytes(
+  input: string | URL | Request,
+  init?: RequestInit,
+): Promise<Uint8Array> {
   if (init?.body !== undefined) {
     return bodyToBytes(init.body);
   }
@@ -228,8 +265,13 @@ async function fetchBodyBytes(input: string | URL | Request, init?: RequestInit)
   return new Uint8Array();
 }
 
-function mergedHeaders(input: string | URL | Request, init?: RequestInit): Headers {
-  const headers = new Headers(input instanceof Request ? input.headers : undefined);
+function mergedHeaders(
+  input: string | URL | Request,
+  init?: RequestInit,
+): Headers {
+  const headers = new Headers(
+    input instanceof Request ? input.headers : undefined,
+  );
   const initHeaders = new Headers(init?.headers);
   initHeaders.forEach((value, key) => {
     headers.set(key, value);
@@ -274,7 +316,14 @@ function decodeChunkedBody(body: Buffer): Buffer {
       throw new Error("Invalid chunked HTTP response from S3");
     }
 
-    const sizeText = body.subarray(offset, lineEnd).toString("ascii").split(";", 1)[0].trim();
+    const sizeText = body
+      .subarray(offset, lineEnd)
+      .toString("ascii")
+      .split(";", 1)[0]
+      ?.trim();
+    if (sizeText === undefined) {
+      throw new Error("Invalid chunk size in HTTP response from S3");
+    }
     const size = Number.parseInt(sizeText, 16);
     if (!Number.isFinite(size)) {
       throw new Error("Invalid chunk size in HTTP response from S3");
@@ -307,7 +356,13 @@ function parseHttpResponse(buffer: Buffer): Response {
 
   const headerText = buffer.subarray(0, headerEnd).toString("latin1");
   const lines = headerText.split("\r\n");
-  const statusMatch = lines[0].match(/^HTTP\/\d(?:\.\d)?\s+(\d{3})(?:\s+(.*))?$/);
+  const statusLine = lines[0];
+  if (statusLine === undefined) {
+    throw new Error("Invalid HTTP response from S3 proxy connection");
+  }
+  const statusMatch = statusLine.match(
+    /^HTTP\/\d(?:\.\d)?\s+(\d{3})(?:\s+(.*))?$/,
+  );
   if (statusMatch === null) {
     throw new Error("Invalid HTTP status line from S3 proxy connection");
   }
@@ -318,11 +373,21 @@ function parseHttpResponse(buffer: Buffer): Response {
     if (separator === -1) {
       continue;
     }
-    headers.append(line.slice(0, separator), line.slice(separator + 1).trimStart());
+    headers.append(
+      line.slice(0, separator),
+      line.slice(separator + 1).trimStart(),
+    );
   }
 
   let body = buffer.subarray(headerEnd + 4);
-  if (headers.get("transfer-encoding")?.toLowerCase().split(",").map((value) => value.trim()).includes("chunked") === true) {
+  if (
+    headers
+      .get("transfer-encoding")
+      ?.toLowerCase()
+      .split(",")
+      .map((value) => value.trim())
+      .includes("chunked") === true
+  ) {
     body = decodeChunkedBody(body);
   } else {
     const contentLength = headers.get("content-length");
@@ -346,8 +411,11 @@ async function socksFetchOnce(
 ): Promise<Response> {
   const url = new URL(input instanceof Request ? input.url : input.toString());
   const headers = mergedHeaders(input, init);
-  const method = init?.method ?? (input instanceof Request ? input.method : "GET");
-  const hasRequestBody = init?.body !== undefined || (input instanceof Request && input.body !== null);
+  const method =
+    init?.method ?? (input instanceof Request ? input.method : "GET");
+  const hasRequestBody =
+    init?.body !== undefined ||
+    (input instanceof Request && input.body !== null);
   const body = await fetchBodyBytes(input, init);
 
   if (!headers.has("host")) {
@@ -369,10 +437,12 @@ async function socksFetchOnce(
   const socket = await openSocksHttpSocket(url, proxy, connector);
   try {
     const response = readSocket(socket);
-    socket.end(Buffer.concat([
-      Buffer.from(`${headerLines.join("\r\n")}\r\n\r\n`, "utf8"),
-      Buffer.from(body),
-    ]));
+    socket.end(
+      Buffer.concat([
+        Buffer.from(`${headerLines.join("\r\n")}\r\n\r\n`, "utf8"),
+        Buffer.from(body),
+      ]),
+    );
     return parseHttpResponse(await response);
   } catch (error) {
     socket.destroy();
@@ -384,41 +454,64 @@ function shouldFollowRedirect(response: Response, init?: RequestInit): boolean {
   if (init?.redirect === "manual" || init?.redirect === "error") {
     return false;
   }
-  return response.status === 301 || response.status === 302 || response.status === 303
-    || response.status === 307 || response.status === 308;
+  return (
+    response.status === 301 ||
+    response.status === 302 ||
+    response.status === 303 ||
+    response.status === 307 ||
+    response.status === 308
+  );
 }
 
-function createSocksFetch(proxy: ProxyConfig, connector: Socks5Connector = connectSocks5): S3Fetch {
+function createSocksFetch(
+  proxy: ProxyConfig,
+  connector: Socks5Connector = connectSocks5,
+): S3Fetch {
   return async (input, init) => {
     let currentInput = input;
     let currentInit = init;
 
     for (let redirects = 0; redirects <= 5; redirects += 1) {
-      const response = await socksFetchOnce(currentInput, currentInit, proxy, connector);
+      const response = await socksFetchOnce(
+        currentInput,
+        currentInit,
+        proxy,
+        connector,
+      );
       const location = response.headers.get("location");
       if (!shouldFollowRedirect(response, currentInit) || location === null) {
         return response;
       }
       if (redirects === 5) {
-        throw new Error("Too many redirects while fetching S3 object through SOCKS5 proxy");
+        throw new Error(
+          "Too many redirects while fetching S3 object through SOCKS5 proxy",
+        );
       }
 
-      const previousUrl = new URL(currentInput instanceof Request ? currentInput.url : currentInput.toString());
+      const previousUrl = new URL(
+        currentInput instanceof Request
+          ? currentInput.url
+          : currentInput.toString(),
+      );
       currentInput = new URL(location, previousUrl);
       if (response.status === 303) {
         currentInit = { ...currentInit, method: "GET", body: undefined };
       }
     }
 
-    throw new Error("Too many redirects while fetching S3 object through SOCKS5 proxy");
+    throw new Error(
+      "Too many redirects while fetching S3 object through SOCKS5 proxy",
+    );
   };
 }
 
 export function createUnsignedS3Backend(options: S3ClientOptions): S3Backend {
   const baseUrl = unsignedS3BaseUrl(options);
-  const fetcher = options.fetch ?? (options.proxy === undefined
-    ? fetch
-    : createSocksFetch(options.proxy, options.proxyConnector));
+  const fetcher =
+    options.fetch ??
+    (options.proxy === undefined
+      ? fetch
+      : createSocksFetch(options.proxy, options.proxyConnector));
 
   return {
     async list(input = {}): Promise<S3ListResponse> {
@@ -474,7 +567,9 @@ export function createUnsignedS3Backend(options: S3ClientOptions): S3Backend {
       return 0;
     },
     async delete(path): Promise<void> {
-      const response = await fetcher(objectUrl(baseUrl, path), { method: "DELETE" });
+      const response = await fetcher(objectUrl(baseUrl, path), {
+        method: "DELETE",
+      });
       if (!response.ok) {
         throw await responseError(response);
       }
@@ -506,7 +601,10 @@ function modifiedDate(value: string | Date | undefined): Date | undefined {
   return value instanceof Date ? value : new Date(value);
 }
 
-async function readAllObjects(backend: S3Backend, prefix: string): Promise<S3ListResponse[]> {
+async function readAllObjects(
+  backend: S3Backend,
+  prefix: string,
+): Promise<S3ListResponse[]> {
   const responses: S3ListResponse[] = [];
   let continuationToken: string | undefined;
 
@@ -517,7 +615,10 @@ async function readAllObjects(backend: S3Backend, prefix: string): Promise<S3Lis
       continuationToken,
     });
     responses.push(response);
-    continuationToken = response.isTruncated === true ? response.nextContinuationToken : undefined;
+    continuationToken =
+      response.isTruncated === true
+        ? response.nextContinuationToken
+        : undefined;
   } while (continuationToken !== undefined);
 
   return responses;
@@ -561,7 +662,8 @@ export class S3Client implements StorageClient {
             continue;
           }
 
-          const relativeKey = prefix === "" ? object.key : object.key.slice(prefix.length);
+          const relativeKey =
+            prefix === "" ? object.key : object.key.slice(prefix.length);
           if (relativeKey === "" || relativeKey.includes("/")) {
             continue;
           }
@@ -576,26 +678,43 @@ export class S3Client implements StorageClient {
         }
       }
     } catch (error) {
-      throw new ListingError(`Failed to list directory '${path}': ${(error as Error).message}`, { cause: error });
+      throw new ListingError(
+        `Failed to list directory '${path}': ${(error as Error).message}`,
+        { cause: error },
+      );
     }
 
     return [...results.values()];
   }
 
-  async download(remotePath: string, localPath: string, options: TransferOptions = {}): Promise<void> {
+  async download(
+    remotePath: string,
+    localPath: string,
+    options: TransferOptions = {},
+  ): Promise<void> {
     options.signal?.throwIfAborted();
     const key = formatKey(remotePath);
     try {
       const buffer = await this.backend.file(key).arrayBuffer();
       options.signal?.throwIfAborted();
       await writeFile(localPath, new Uint8Array(buffer));
-      options.onProgress?.({ bytes: buffer.byteLength, total: buffer.byteLength });
+      options.onProgress?.({
+        bytes: buffer.byteLength,
+        total: buffer.byteLength,
+      });
     } catch (error) {
-      throw new TransferError(`Failed to download '${remotePath}' from S3 bucket '${this.bucketName}': ${(error as Error).message}`, { cause: error });
+      throw new TransferError(
+        `Failed to download '${remotePath}' from S3 bucket '${this.bucketName}': ${(error as Error).message}`,
+        { cause: error },
+      );
     }
   }
 
-  async upload(localPath: string, remotePath: string, options: TransferOptions = {}): Promise<void> {
+  async upload(
+    localPath: string,
+    remotePath: string,
+    options: TransferOptions = {},
+  ): Promise<void> {
     options.signal?.throwIfAborted();
     const source = Bun.file(localPath);
     const key = formatKey(remotePath);
@@ -603,7 +722,10 @@ export class S3Client implements StorageClient {
       const bytes = await this.backend.write(key, source);
       options.onProgress?.({ bytes, total: bytes });
     } catch (error) {
-      throw new TransferError(`Failed to upload '${localPath}' to S3 bucket '${this.bucketName}': ${(error as Error).message}`, { cause: error });
+      throw new TransferError(
+        `Failed to upload '${localPath}' to S3 bucket '${this.bucketName}': ${(error as Error).message}`,
+        { cause: error },
+      );
     }
   }
 

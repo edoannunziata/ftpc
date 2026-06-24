@@ -2,18 +2,39 @@ import { readFile } from "node:fs/promises";
 import type { Socket } from "node:net";
 import { homedir } from "node:os";
 import { join as joinLocalPath } from "node:path";
-import { Client as Ssh2Client, type ConnectConfig, type FileEntryWithStats, type SFTPWrapper } from "ssh2";
+import {
+  Client as Ssh2Client,
+  type ConnectConfig,
+  type FileEntryWithStats,
+  type SFTPWrapper,
+} from "ssh2";
 import type { ProxyConfig } from "../config.ts";
 import { baseName, normalizeRemotePath } from "../paths.ts";
 import { connectSocks5, type Socks5Connector } from "../socks5.ts";
-import type { FileDescriptor, StorageClient, TransferOptions } from "../types.ts";
+import type {
+  FileDescriptor,
+  StorageClient,
+  TransferOptions,
+} from "../types.ts";
 import { ListingError, TransferError } from "../errors.ts";
 
 export interface SftpBackend {
   connect(options: ConnectConfig): Promise<void>;
   readdir(path: string): Promise<FileEntryWithStats[]>;
-  fastGet(remotePath: string, localPath: string, options?: { step?: (total: number, chunk: number, totalSize: number) => void }): Promise<void>;
-  fastPut(localPath: string, remotePath: string, options?: { step?: (total: number, chunk: number, totalSize: number) => void }): Promise<void>;
+  fastGet(
+    remotePath: string,
+    localPath: string,
+    options?: {
+      step?: (total: number, chunk: number, totalSize: number) => void;
+    },
+  ): Promise<void>;
+  fastPut(
+    localPath: string,
+    remotePath: string,
+    options?: {
+      step?: (total: number, chunk: number, totalSize: number) => void;
+    },
+  ): Promise<void>;
   unlink(path: string): Promise<void>;
   mkdir(path: string): Promise<void>;
   close(): void;
@@ -43,7 +64,10 @@ function descriptorFromEntry(entry: FileEntryWithStats): FileDescriptor {
     name: baseName(entry.filename),
     type: isDirectory ? "directory" : "file",
     size: isDirectory ? undefined : entry.attrs.size,
-    modifiedTime: entry.attrs.mtime === undefined ? undefined : new Date(entry.attrs.mtime * 1000),
+    modifiedTime:
+      entry.attrs.mtime === undefined
+        ? undefined
+        : new Date(entry.attrs.mtime * 1000),
   };
 }
 
@@ -105,7 +129,13 @@ class Ssh2SftpBackend implements SftpBackend {
     });
   }
 
-  async fastGet(remotePath: string, localPath: string, options: { step?: (total: number, chunk: number, totalSize: number) => void } = {}): Promise<void> {
+  async fastGet(
+    remotePath: string,
+    localPath: string,
+    options: {
+      step?: (total: number, chunk: number, totalSize: number) => void;
+    } = {},
+  ): Promise<void> {
     const sftp = this.requireSftp();
     return new Promise((resolve, reject) => {
       sftp.fastGet(remotePath, localPath, options, (error) => {
@@ -118,7 +148,13 @@ class Ssh2SftpBackend implements SftpBackend {
     });
   }
 
-  async fastPut(localPath: string, remotePath: string, options: { step?: (total: number, chunk: number, totalSize: number) => void } = {}): Promise<void> {
+  async fastPut(
+    localPath: string,
+    remotePath: string,
+    options: {
+      step?: (total: number, chunk: number, totalSize: number) => void;
+    } = {},
+  ): Promise<void> {
     const sftp = this.requireSftp();
     return new Promise((resolve, reject) => {
       sftp.fastPut(localPath, remotePath, options, (error) => {
@@ -233,7 +269,10 @@ export class SftpClient implements StorageClient {
       options.password = this.password;
     }
     if (this.keyFilename !== undefined) {
-      options.privateKey = await readFile(expandHomePath(this.keyFilename), "utf8");
+      options.privateKey = await readFile(
+        expandHomePath(this.keyFilename),
+        "utf8",
+      );
       if (this.password !== undefined) {
         options.passphrase = this.password;
       }
@@ -276,13 +315,22 @@ export class SftpClient implements StorageClient {
   async list(path: string): Promise<FileDescriptor[]> {
     try {
       await this.ensureConnected();
-      return (await this.backend.readdir(formatPath(path))).map(descriptorFromEntry);
+      return (await this.backend.readdir(formatPath(path))).map(
+        descriptorFromEntry,
+      );
     } catch (error) {
-      throw new ListingError(`Failed to list directory '${path}': ${(error as Error).message}`, { cause: error });
+      throw new ListingError(
+        `Failed to list directory '${path}': ${(error as Error).message}`,
+        { cause: error },
+      );
     }
   }
 
-  async download(remotePath: string, localPath: string, options: TransferOptions = {}): Promise<void> {
+  async download(
+    remotePath: string,
+    localPath: string,
+    options: TransferOptions = {},
+  ): Promise<void> {
     const cleanupAbort = this.watchAbort(options.signal);
     try {
       await this.ensureConnected();
@@ -294,13 +342,20 @@ export class SftpClient implements StorageClient {
       if (options.signal?.aborted) {
         options.signal.throwIfAborted();
       }
-      throw new TransferError(`Failed to download '${remotePath}' from SFTP host '${this.host}': ${(error as Error).message}`, { cause: error });
+      throw new TransferError(
+        `Failed to download '${remotePath}' from SFTP host '${this.host}': ${(error as Error).message}`,
+        { cause: error },
+      );
     } finally {
       cleanupAbort();
     }
   }
 
-  async upload(localPath: string, remotePath: string, options: TransferOptions = {}): Promise<void> {
+  async upload(
+    localPath: string,
+    remotePath: string,
+    options: TransferOptions = {},
+  ): Promise<void> {
     const cleanupAbort = this.watchAbort(options.signal);
     try {
       await this.ensureConnected();
@@ -312,7 +367,10 @@ export class SftpClient implements StorageClient {
       if (options.signal?.aborted) {
         options.signal.throwIfAborted();
       }
-      throw new TransferError(`Failed to upload '${localPath}' to SFTP host '${this.host}': ${(error as Error).message}`, { cause: error });
+      throw new TransferError(
+        `Failed to upload '${localPath}' to SFTP host '${this.host}': ${(error as Error).message}`,
+        { cause: error },
+      );
     } finally {
       cleanupAbort();
     }

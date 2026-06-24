@@ -4,7 +4,11 @@ import {
 } from "@azure/storage-blob";
 import { DefaultAzureCredential } from "@azure/identity";
 import { baseName, normalizeRemotePath, stripLeadingSlash } from "../paths.ts";
-import type { FileDescriptor, StorageClient, TransferOptions } from "../types.ts";
+import type {
+  FileDescriptor,
+  StorageClient,
+  TransferOptions,
+} from "../types.ts";
 import { ListingError, TransferError } from "../errors.ts";
 
 export interface AzureBlobPrefixItem {
@@ -29,15 +33,31 @@ interface AzureBlobProgressOptions {
 }
 
 export interface AzureBlobBackend {
-  listBlobsByHierarchy(delimiter: string, options?: { prefix?: string }): AsyncIterable<AzureBlobListItem>;
+  listBlobsByHierarchy(
+    delimiter: string,
+    options?: { prefix?: string },
+  ): AsyncIterable<AzureBlobListItem>;
   getBlobClient(path: string): {
-    downloadToFile(localPath: string, offset?: number, count?: number, options?: AzureBlobProgressOptions): Promise<unknown>;
+    downloadToFile(
+      localPath: string,
+      offset?: number,
+      count?: number,
+      options?: AzureBlobProgressOptions,
+    ): Promise<unknown>;
   };
   getBlockBlobClient(path: string): {
-    uploadFile(localPath: string, options?: AzureBlobProgressOptions): Promise<unknown>;
+    uploadFile(
+      localPath: string,
+      options?: AzureBlobProgressOptions,
+    ): Promise<unknown>;
   };
   deleteBlob(path: string): Promise<unknown>;
-  uploadBlockBlob(path: string, body: string, contentLength: number, options?: AzureBlobProgressOptions): Promise<unknown>;
+  uploadBlockBlob(
+    path: string,
+    body: string,
+    contentLength: number,
+    options?: AzureBlobProgressOptions,
+  ): Promise<unknown>;
 }
 
 export interface AzureBlobClientOptions {
@@ -64,29 +84,40 @@ function normalizeAccountUrl(input: string): string {
 
 function accountNameFromUrl(accountUrl: string): string {
   const url = new URL(accountUrl);
-  if ((url.hostname === "localhost" || url.hostname === "127.0.0.1") && url.pathname !== "") {
+  if (
+    (url.hostname === "localhost" || url.hostname === "127.0.0.1") &&
+    url.pathname !== ""
+  ) {
     const [accountName] = stripLeadingSlash(url.pathname).split("/");
-    if (accountName !== "") {
+    if (accountName !== undefined && accountName !== "") {
       return accountName;
     }
   }
-  return url.hostname.split(".")[0] ?? url.hostname;
+  const [accountName = url.hostname] = url.hostname.split(".");
+  return accountName;
 }
 
-function createAzureBlobBackend(options: AzureBlobClientOptions): AzureBlobBackend {
+function createAzureBlobBackend(
+  options: AzureBlobClientOptions,
+): AzureBlobBackend {
   if (options.connectionString !== undefined) {
-    return BlobServiceClient
-      .fromConnectionString(options.connectionString)
-      .getContainerClient(options.containerName) as AzureBlobBackend;
+    return BlobServiceClient.fromConnectionString(
+      options.connectionString,
+    ).getContainerClient(options.containerName) as AzureBlobBackend;
   }
 
   const accountUrl = normalizeAccountUrl(options.accountUrl);
-  const credential = options.accountKey === undefined
-    ? new DefaultAzureCredential()
-    : new StorageSharedKeyCredential(accountNameFromUrl(accountUrl), options.accountKey);
+  const credential =
+    options.accountKey === undefined
+      ? new DefaultAzureCredential()
+      : new StorageSharedKeyCredential(
+          accountNameFromUrl(accountUrl),
+          options.accountKey,
+        );
 
-  return new BlobServiceClient(accountUrl, credential)
-    .getContainerClient(options.containerName) as AzureBlobBackend;
+  return new BlobServiceClient(accountUrl, credential).getContainerClient(
+    options.containerName,
+  ) as AzureBlobBackend;
 }
 
 function formatBlobPath(path: string): string {
@@ -109,7 +140,8 @@ function directoryName(prefix: string): string {
 function transferProgress(options: TransferOptions): AzureBlobProgressOptions {
   return {
     abortSignal: options.signal,
-    onProgress: (progress) => options.onProgress?.({ bytes: progress.loadedBytes }),
+    onProgress: (progress) =>
+      options.onProgress?.({ bytes: progress.loadedBytes }),
   };
 }
 
@@ -135,7 +167,9 @@ export class AzureBlobClient implements StorageClient {
     const results = new Map<string, FileDescriptor>();
 
     try {
-      for await (const item of this.backend.listBlobsByHierarchy("/", { prefix })) {
+      for await (const item of this.backend.listBlobsByHierarchy("/", {
+        prefix,
+      })) {
         if (item.kind === "prefix") {
           const name = directoryName(item.name);
           if (name !== "") {
@@ -153,7 +187,8 @@ export class AzureBlobClient implements StorageClient {
           continue;
         }
 
-        const relativeName = prefix === "" ? item.name : item.name.slice(prefix.length);
+        const relativeName =
+          prefix === "" ? item.name : item.name.slice(prefix.length);
         if (relativeName === "" || relativeName.includes("/")) {
           continue;
         }
@@ -167,27 +202,48 @@ export class AzureBlobClient implements StorageClient {
         });
       }
     } catch (error) {
-      throw new ListingError(`Failed to list directory '${path}' in Azure Blob container '${this.containerName}': ${(error as Error).message}`, { cause: error });
+      throw new ListingError(
+        `Failed to list directory '${path}' in Azure Blob container '${this.containerName}': ${(error as Error).message}`,
+        { cause: error },
+      );
     }
 
     return [...results.values()];
   }
 
-  async download(remotePath: string, localPath: string, options: TransferOptions = {}): Promise<void> {
+  async download(
+    remotePath: string,
+    localPath: string,
+    options: TransferOptions = {},
+  ): Promise<void> {
     options.signal?.throwIfAborted();
     try {
-      await this.backend.getBlobClient(formatBlobPath(remotePath)).downloadToFile(localPath, 0, undefined, transferProgress(options));
+      await this.backend
+        .getBlobClient(formatBlobPath(remotePath))
+        .downloadToFile(localPath, 0, undefined, transferProgress(options));
     } catch (error) {
-      throw new TransferError(`Failed to download '${remotePath}' from Azure Blob container '${this.containerName}': ${(error as Error).message}`, { cause: error });
+      throw new TransferError(
+        `Failed to download '${remotePath}' from Azure Blob container '${this.containerName}': ${(error as Error).message}`,
+        { cause: error },
+      );
     }
   }
 
-  async upload(localPath: string, remotePath: string, options: TransferOptions = {}): Promise<void> {
+  async upload(
+    localPath: string,
+    remotePath: string,
+    options: TransferOptions = {},
+  ): Promise<void> {
     options.signal?.throwIfAborted();
     try {
-      await this.backend.getBlockBlobClient(formatBlobPath(remotePath)).uploadFile(localPath, transferProgress(options));
+      await this.backend
+        .getBlockBlobClient(formatBlobPath(remotePath))
+        .uploadFile(localPath, transferProgress(options));
     } catch (error) {
-      throw new TransferError(`Failed to upload '${localPath}' to Azure Blob container '${this.containerName}': ${(error as Error).message}`, { cause: error });
+      throw new TransferError(
+        `Failed to upload '${localPath}' to Azure Blob container '${this.containerName}': ${(error as Error).message}`,
+        { cause: error },
+      );
     }
   }
 

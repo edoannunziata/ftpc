@@ -165,7 +165,11 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-function requiredString(data: Record<string, unknown>, key: string, label: string): string {
+function requiredString(
+  data: Record<string, unknown>,
+  key: string,
+  label: string,
+): string {
   const value = data[key];
   if (typeof value !== "string" || value === "") {
     throw new ValidationError(`${label} requires '${key}' field`);
@@ -179,8 +183,14 @@ function optionalBoolean(value: unknown, fallback: boolean): boolean {
 
 function portNumber(value: unknown, fallback: number, label: string): number {
   const port = value === undefined ? fallback : value;
-  if (!Number.isInteger(port) || (port as number) < 1 || (port as number) > 65535) {
-    throw new ValidationError(`${label} port must be an integer between 1 and 65535`);
+  if (
+    !Number.isInteger(port) ||
+    (port as number) < 1 ||
+    (port as number) > 65535
+  ) {
+    throw new ValidationError(
+      `${label} port must be an integer between 1 and 65535`,
+    );
   }
   return port as number;
 }
@@ -198,15 +208,24 @@ function parseProxy(data: Record<string, unknown>): ProxyConfig | undefined {
   };
 }
 
-function parseUrlWithDefaultProtocol(url: string, protocol: "ftp" | "sftp", label: string): ReturnType<typeof parseStorageUrl> {
+function parseUrlWithDefaultProtocol(
+  url: string,
+  protocol: "ftp" | "sftp",
+  label: string,
+): ReturnType<typeof parseStorageUrl> {
   try {
     return parseStorageUrl(url.includes("://") ? url : `${protocol}://${url}`);
   } catch (error) {
-    throw new ValidationError(`Invalid ${label} URL '${url}': ${(error as Error).message}`);
+    throw new ValidationError(
+      `Invalid ${label} URL '${url}': ${(error as Error).message}`,
+    );
   }
 }
 
-function parseRemote(name: string, data: Record<string, unknown>): RemoteConfig {
+function parseRemote(
+  name: string,
+  data: Record<string, unknown>,
+): RemoteConfig {
   const remoteType = data.type;
   if (typeof remoteType !== "string") {
     throw new ValidationError(`Remote '${name}' missing required 'type' field`);
@@ -239,11 +258,15 @@ function parseRemote(name: string, data: Record<string, unknown>): RemoteConfig 
         try {
           bucketName = parseStorageUrl(url).host;
         } catch (error) {
-          throw new ValidationError(`Invalid S3 URL '${url}': ${(error as Error).message}`);
+          throw new ValidationError(
+            `Invalid S3 URL '${url}': ${(error as Error).message}`,
+          );
         }
       }
       if (!bucketName && !url) {
-        throw new ValidationError("S3 configuration requires either 'url' or 'bucket_name'");
+        throw new ValidationError(
+          "S3 configuration requires either 'url' or 'bucket_name'",
+        );
       }
       return {
         name,
@@ -273,7 +296,9 @@ function parseRemote(name: string, data: Record<string, unknown>): RemoteConfig 
       const password = optionalString(data.password);
       const keyFilename = optionalString(data.key_filename);
       if (!password && !keyFilename && parsed.password === undefined) {
-        throw new ValidationError("SFTP configuration requires either 'password' or 'key_filename'");
+        throw new ValidationError(
+          "SFTP configuration requires either 'password' or 'key_filename'",
+        );
       }
       return {
         name,
@@ -298,7 +323,9 @@ function parseRemote(name: string, data: Record<string, unknown>): RemoteConfig 
         proxy,
       };
     default:
-      throw new ValidationError(`Unknown remote type '${remoteType}' for remote '${name}'`);
+      throw new ValidationError(
+        `Unknown remote type '${remoteType}' for remote '${name}'`,
+      );
   }
 }
 
@@ -307,7 +334,9 @@ export function parseConfigText(text: string): Config {
   try {
     parsed = TOML.parse(text);
   } catch (error) {
-    throw new ConfigError(`Failed to parse TOML configuration: ${(error as Error).message}`);
+    throw new ConfigError(
+      `Failed to parse TOML configuration: ${(error as Error).message}`,
+    );
   }
 
   if (!isRecord(parsed)) {
@@ -319,17 +348,23 @@ export function parseConfigText(text: string): Config {
 
   for (const [name, value] of Object.entries(parsed)) {
     if (!isRecord(value)) {
-      warnings.push(`Remote '${name}' configuration must be a dictionary - skipping`);
+      warnings.push(
+        `Remote '${name}' configuration must be a dictionary - skipping`,
+      );
       continue;
     }
     if (typeof value.type !== "string") {
-      warnings.push(`Remote '${name}' missing required 'type' field - skipping`);
+      warnings.push(
+        `Remote '${name}' missing required 'type' field - skipping`,
+      );
       continue;
     }
     try {
       remotes.set(name, parseRemote(name, value));
     } catch (error) {
-      warnings.push(`Invalid configuration for remote '${name}': ${(error as Error).message} - skipping`);
+      warnings.push(
+        `Invalid configuration for remote '${name}': ${(error as Error).message} - skipping`,
+      );
     }
   }
 
@@ -340,13 +375,21 @@ export function parseConfigText(text: string): Config {
   return { remotes, warnings };
 }
 
-export async function createDefaultConfig(path = DEFAULT_CONFIG_PATH): Promise<void> {
+export async function createDefaultConfig(
+  path = DEFAULT_CONFIG_PATH,
+): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, DEFAULT_CONFIG_TEXT, "utf8");
 }
 
-export async function loadConfig(path = DEFAULT_CONFIG_PATH, options: LoadConfigOptions = {}): Promise<Config> {
-  if (!existsSync(path) && (path === DEFAULT_CONFIG_PATH || options.createDefault === true)) {
+export async function loadConfig(
+  path = DEFAULT_CONFIG_PATH,
+  options: LoadConfigOptions = {},
+): Promise<Config> {
+  if (
+    !existsSync(path) &&
+    (path === DEFAULT_CONFIG_PATH || options.createDefault === true)
+  ) {
     await createDefaultConfig(path);
   }
   const text = await readFile(path, "utf8");
@@ -359,9 +402,13 @@ export function getRemote(config: Config, name: string): RemoteConfig {
     return remote;
   }
   const available = [...config.remotes.keys()].join(", ");
-  throw new RemoteNotFoundError(`Remote '${name}' not found in configuration. Available remotes: ${available}`);
+  throw new RemoteNotFoundError(
+    `Remote '${name}' not found in configuration. Available remotes: ${available}`,
+  );
 }
 
 export function listRemotes(config: Config): Record<string, string> {
-  return Object.fromEntries([...config.remotes].map(([name, remote]) => [name, remote.type]));
+  return Object.fromEntries(
+    [...config.remotes].map(([name, remote]) => [name, remote.type]),
+  );
 }
