@@ -6,6 +6,22 @@ Azure Data Lake Storage Gen2, and Azure Blob Storage.
 
 ## Quick Start
 
+Install the latest packaged build from `master`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/edoannunziata/ftpc/master/install.sh | bash
+```
+
+Use a different install directory, repo, or release tag when needed:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/edoannunziata/ftpc/master/install.sh | FTPC_INSTALL_DIR="$HOME/.local/bin" bash
+curl -fsSL https://raw.githubusercontent.com/edoannunziata/ftpc/master/install.sh | FTPC_TAG="master-latest" bash
+curl -fsSL https://raw.githubusercontent.com/edoannunziata/ftpc/master/install.sh | FTPC_REPO="owner/ftpc" bash
+```
+
+Build from source:
+
 ```bash
 bun install
 bun run typecheck
@@ -25,6 +41,12 @@ Build a standalone Bun executable:
 ```bash
 bun run build:exe
 ./dist/ftpc --help
+```
+
+Create release packages locally:
+
+```bash
+bun run package
 ```
 
 ## CLI

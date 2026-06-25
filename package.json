@@ -10,6 +10,8 @@
     "format:check": "bunx prettier --check . --ignore-unknown --ignore-path .prettierignore",
     "hooks:install": "bun run scripts/install-hooks.ts",
     "prepare": "bun run hooks:install",
+    "package": "bun run scripts/package.ts",
+    "package:all": "bun run scripts/package.ts --all",
     "test": "bun test tests",
     "typecheck": "bunx tsc --noEmit",
     "build:exe": "bun build --target=bun src/index.ts --compile --outfile dist/ftpc"
