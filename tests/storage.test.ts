@@ -65,6 +65,15 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true });
 });
 
+async function writeKnownHosts(): Promise<string> {
+  const path = join(tempDir, "known_hosts");
+  await writeFile(
+    path,
+    "sftp.example.com ssh-ed25519 trusted-key\nexample.com ssh-ed25519 trusted-key\n",
+  );
+  return path;
+}
+
 describe("Storage", () => {
   test("connects to local file URLs and resolves relative paths", async () => {
     const store = Storage.connect(`file://${tempDir}`);
@@ -188,6 +197,7 @@ describe("Storage", () => {
       username: "me",
       password: "secret",
       basePath: "/home",
+      knownHostsPath: await writeKnownHosts(),
       backend: sftpBackend,
     });
     expect(sftp.name).toBe("SFTP:sftp.example.com");
@@ -401,6 +411,7 @@ describe("Storage", () => {
         proxyCalls.push(options);
         return proxySocket;
       },
+      knownHostsPath: await writeKnownHosts(),
       backend,
     });
 
@@ -694,6 +705,7 @@ tls = false
 
     const store = Storage.connect("sftp://user:secret@example.com:2222/base", {
       sftpBackend: backend,
+      sftpKnownHostsPath: await writeKnownHosts(),
     });
     expect(store.name).toBe("SFTP:example.com");
     expect(await store.list()).toEqual([]);
@@ -704,6 +716,7 @@ tls = false
         username: "user",
         password: "secret",
         readyTimeout: 5000,
+        hostVerifier: expect.any(Function),
       },
     ]);
     expect(readdirCalls).toEqual(["/base"]);
@@ -728,7 +741,11 @@ tls = false
       close() {},
     };
 
-    const store = Storage.connect("sftp", { config, sftpBackend: backend });
+    const store = Storage.connect("sftp", {
+      config,
+      sftpBackend: backend,
+      sftpKnownHostsPath: await writeKnownHosts(),
+    });
     expect(store.name).toBe("sftp");
     expect(await store.list()).toEqual([]);
     expect(connectCalls[0]).toMatchObject({
@@ -771,12 +788,14 @@ password = "config-pass"
       await Storage.connect("from-url", {
         config,
         sftpBackend: backend,
+        sftpKnownHostsPath: await writeKnownHosts(),
       }).list(),
     ).toEqual([]);
     expect(
       await Storage.connect("explicit", {
         config,
         sftpBackend: backend,
+        sftpKnownHostsPath: await writeKnownHosts(),
       }).list(),
     ).toEqual([]);
 
@@ -823,12 +842,14 @@ password = "secret"
       await Storage.connect("from-url", {
         config,
         sftpBackend: backend,
+        sftpKnownHostsPath: await writeKnownHosts(),
       }).list(),
     ).toEqual([]);
     expect(
       await Storage.connect("explicit", {
         config,
         sftpBackend: backend,
+        sftpKnownHostsPath: await writeKnownHosts(),
       }).list(),
     ).toEqual([]);
 
@@ -1002,6 +1023,7 @@ port = 1081
     const store = Storage.connect("sftp", {
       config,
       sftpBackend: backend,
+      sftpKnownHostsPath: await writeKnownHosts(),
       sftpProxyConnector: async (options) => {
         proxyCalls.push(options);
         return proxySocket;

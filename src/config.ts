@@ -64,6 +64,7 @@ export interface SftpConfig extends BaseRemoteConfig {
   username?: string;
   password?: string;
   keyFilename?: string;
+  knownHostsPath?: string;
 }
 
 export interface BlobConfig extends BaseRemoteConfig {
@@ -115,6 +116,7 @@ type = "local"
 # username = "user"
 # password = "password"
 # key_filename = "~/.ssh/id_rsa"
+# known_hosts_path = "~/.ssh/known_hosts"
 
 # Example S3 configuration:
 # [my-s3-bucket]
@@ -309,6 +311,7 @@ function parseRemote(
         username: optionalString(data.username),
         password,
         keyFilename,
+        knownHostsPath: optionalString(data.known_hosts_path),
         proxy,
       };
     }

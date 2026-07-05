@@ -31,6 +31,7 @@ export interface StorageConnectOptions {
   ftpProxyConnector?: Socks5Connector;
   sftpBackend?: SftpBackend;
   sftpProxyConnector?: Socks5Connector;
+  sftpKnownHostsPath?: string;
   azureBlobBackend?: AzureBlobBackend;
   azureDataLakeBackend?: AzureDataLakeBackend;
 }
@@ -55,6 +56,7 @@ export interface SftpStorageOptions extends NamedStorageOptions {
   username?: string;
   password?: string;
   keyFilename?: string;
+  knownHostsPath?: string;
   proxyConnector?: Socks5Connector;
   backend?: SftpBackend;
 }
@@ -275,6 +277,7 @@ function createSftpSessionFromRemote(
   remote: Extract<RemoteConfig, { type: "sftp" }>,
   backend?: SftpBackend,
   proxyConnector?: Socks5Connector,
+  knownHostsPath?: string,
 ): StorageSession {
   const parsed = parseStorageUrl(
     remote.url.includes("://") ? remote.url : `sftp://${remote.url}`,
@@ -286,6 +289,7 @@ function createSftpSessionFromRemote(
       username: remote.username ?? parsed.username,
       password: remote.password ?? parsed.password,
       keyFilename: remote.keyFilename,
+      knownHostsPath: remote.knownHostsPath ?? knownHostsPath,
       proxy: remote.proxy,
       proxyConnector,
       name: remote.name,
@@ -365,6 +369,7 @@ function createFromRemote(
         remote,
         options.sftpBackend,
         options.sftpProxyConnector,
+        options.sftpKnownHostsPath,
       );
     case "azure":
       return createAzureDataLakeSessionFromRemote(
@@ -413,6 +418,7 @@ function createFromUrl(
           port: parsed.port ?? 22,
           username: parsed.username,
           password: parsed.password,
+          knownHostsPath: options.sftpKnownHostsPath,
           backend: options.sftpBackend,
         }),
         parsed.path === "" ? "/" : parsed.path,
@@ -512,6 +518,7 @@ export class Storage {
         username: options.username,
         password: options.password,
         keyFilename: options.keyFilename,
+        knownHostsPath: options.knownHostsPath,
         proxy: options.proxy,
         proxyConnector: options.proxyConnector,
         name,
