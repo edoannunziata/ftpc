@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import type { ConnectConfig, FileEntryWithStats, Stats } from "ssh2";
 import {
   SftpClient,
+  createKnownHostsVerifier,
   expandHomePath,
   type SftpBackend,
 } from "../src/clients/sftp.ts";
@@ -129,6 +130,15 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true });
 });
 
+async function writeKnownHosts(
+  host = "sftp.example.com",
+  key = "trusted-key",
+): Promise<string> {
+  const path = join(tempDir, "known_hosts");
+  await writeFile(path, `${host} ssh-ed25519 ${key}\n`);
+  return path;
+}
+
 describe("SftpClient", () => {
   test("connects lazily and maps directory listings", async () => {
     const backend = new FakeSftpBackend([
@@ -138,6 +148,7 @@ describe("SftpClient", () => {
     const client = new SftpClient({
       host: "sftp.example.com",
       port: 2222,
+      knownHostsPath: await writeKnownHosts("[sftp.example.com]:2222"),
       username: "user",
       password: "secret",
       name: "example",
@@ -154,6 +165,7 @@ describe("SftpClient", () => {
         username: "user",
         password: "secret",
         readyTimeout: 5000,
+        hostVerifier: expect.any(Function),
       },
     ]);
     expect(backend.readdirCalls).toEqual(["/pub"]);
@@ -179,7 +191,11 @@ describe("SftpClient", () => {
     const backend = new FakeSftpBackend();
     backend.remoteFiles.set("/remote/source.txt", "from sftp");
     backend.remoteFiles.set("/remote/delete.txt", "delete me");
-    const client = new SftpClient({ host: "sftp.example.com", backend });
+    const client = new SftpClient({
+      host: "sftp.example.com",
+      knownHostsPath: await writeKnownHosts(),
+      backend,
+    });
     const localDownload = join(tempDir, "downloaded.txt");
     const localUpload = join(tempDir, "upload.txt");
     await writeFile(localUpload, "to sftp");
@@ -221,7 +237,11 @@ describe("SftpClient", () => {
 
   test("wraps lazy connection failures in operation errors", async () => {
     const backend = new FailingConnectSftpBackend();
-    const client = new SftpClient({ host: "sftp.example.com", backend });
+    const client = new SftpClient({
+      host: "sftp.example.com",
+      knownHostsPath: await writeKnownHosts(),
+      backend,
+    });
     const localUpload = join(tempDir, "upload.txt");
     await writeFile(localUpload, "to sftp");
 
@@ -267,7 +287,11 @@ describe("SftpClient", () => {
     }
 
     const backend = new HangingSftpBackend();
-    const client = new SftpClient({ host: "sftp.example.com", backend });
+    const client = new SftpClient({
+      host: "sftp.example.com",
+      knownHostsPath: await writeKnownHosts(),
+      backend,
+    });
     const controller = new AbortController();
     const transfer = client.download(
       "/remote/source.txt",
@@ -292,6 +316,7 @@ describe("SftpClient", () => {
     const client = new SftpClient({
       host: "sftp.example.com",
       port: 2222,
+      knownHostsPath: await writeKnownHosts("[sftp.example.com]:2222"),
       username: "user",
       password: "secret",
       proxy: { host: "proxy.example.com", port: 1080 },
@@ -323,6 +348,17 @@ describe("SftpClient", () => {
     expect(proxySocket.destroyed).toBe(true);
   });
 
+  test("verifies SFTP host keys against known_hosts", async () => {
+    const verifier = await createKnownHostsVerifier(
+      await writeKnownHosts("[sftp.example.com]:2222", "a2V5LWJvZHk="),
+      "sftp.example.com",
+      2222,
+    );
+
+    expect(verifier(Buffer.from("key-body"))).toBe(true);
+    expect(verifier(Buffer.from("other-key"))).toBe(false);
+  });
+
   test("expands home-relative private key filenames and passes password as key passphrase", async () => {
     const originalHome = process.env.HOME;
     process.env.HOME = tempDir;
@@ -338,6 +374,7 @@ describe("SftpClient", () => {
         username: "user",
         password: "key-passphrase",
         keyFilename: "~/.ssh/id_rsa",
+        knownHostsPath: await writeKnownHosts(),
         backend,
       });
 
@@ -351,6 +388,7 @@ describe("SftpClient", () => {
         password: "key-passphrase",
         privateKey: "private key body",
         passphrase: "key-passphrase",
+        hostVerifier: expect.any(Function),
       });
     } finally {
       if (originalHome === undefined) {

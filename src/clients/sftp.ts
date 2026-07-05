@@ -46,6 +46,7 @@ export interface SftpClientOptions {
   username?: string;
   password?: string;
   keyFilename?: string;
+  knownHostsPath?: string;
   proxy?: ProxyConfig;
   proxyConnector?: Socks5Connector;
   name?: string;
@@ -55,6 +56,51 @@ export interface SftpClientOptions {
 function formatPath(path: string): string {
   const normalized = normalizeRemotePath(path);
   return normalized === "." ? "/" : normalized;
+}
+
+function knownHostPatterns(host: string, port: number): string[] {
+  return port === 22 ? [host] : [`[${host}]:${port}`, host];
+}
+
+function knownHostMatches(
+  pattern: string,
+  host: string,
+  port: number,
+): boolean {
+  return knownHostPatterns(host, port).some(
+    (candidate) => candidate === pattern,
+  );
+}
+
+export async function createKnownHostsVerifier(
+  path: string,
+  host: string,
+  port: number,
+): Promise<(key: Buffer) => boolean> {
+  const entries = await readFile(expandHomePath(path), "utf8");
+  const trustedKeys = entries
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("#"))
+    .flatMap((line) => {
+      const fields = line.split(/\s+/u);
+      const offset = fields[0]!.startsWith("@") ? 1 : 0;
+      const hosts = fields[offset];
+      const key = fields[offset + 2];
+      if (hosts === undefined || key === undefined) {
+        return [];
+      }
+      if (hosts.startsWith("|")) {
+        return [];
+      }
+      return hosts
+        .split(",")
+        .some((pattern) => knownHostMatches(pattern, host, port))
+        ? [key]
+        : [];
+    });
+
+  return (key: Buffer): boolean => trustedKeys.includes(key.toString("base64"));
 }
 
 function descriptorFromEntry(entry: FileEntryWithStats): FileDescriptor {
@@ -230,6 +276,7 @@ export class SftpClient implements StorageClient {
   private readonly username: string | undefined;
   private readonly password: string | undefined;
   private readonly keyFilename: string | undefined;
+  private readonly knownHostsPath: string;
   private readonly proxy: ProxyConfig | undefined;
   private readonly proxyConnector: Socks5Connector;
   private readonly displayName: string;
@@ -242,6 +289,7 @@ export class SftpClient implements StorageClient {
     this.username = options.username;
     this.password = options.password;
     this.keyFilename = options.keyFilename;
+    this.knownHostsPath = options.knownHostsPath ?? "~/.ssh/known_hosts";
     this.proxy = options.proxy;
     this.proxyConnector = options.proxyConnector ?? connectSocks5;
     this.displayName = options.name ?? `SFTP:${options.host}`;
@@ -261,6 +309,11 @@ export class SftpClient implements StorageClient {
       host: this.host,
       port: this.port,
       readyTimeout: 5000,
+      hostVerifier: await createKnownHostsVerifier(
+        this.knownHostsPath,
+        this.host,
+        this.port,
+      ),
     };
     if (this.username !== undefined) {
       options.username = this.username;
