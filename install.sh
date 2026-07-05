@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo="${FTPC_REPO:-edoannunziata/ftpc}"
-tag="${FTPC_TAG:-${FTPC_VERSION:-master-latest}}"
+tag="${FTPC_TAG:-${FTPC_VERSION:-}}"
 install_dir="${FTPC_INSTALL_DIR:-/usr/local/bin}"
 
 case "$(uname -s)" in
@@ -44,7 +44,7 @@ sha256_file() {
   elif command -v shasum >/dev/null 2>&1; then
     shasum -a 256 "$1" | awk '{print $1}'
   else
-    echo "No SHA-256 tool found; skipping checksum verification" >&2
+    echo "Required command not found: sha256sum or shasum" >&2
     return 1
   fi
 }
@@ -80,6 +80,19 @@ require_command tar
 require_command awk
 require_command install
 
+if [ -z "$tag" ]; then
+  echo "FTPC_TAG or FTPC_VERSION must name an immutable release tag to install" >&2
+  exit 1
+fi
+
+case "$tag" in
+  master | master-latest | latest)
+    echo "Refusing to install from mutable tag: $tag" >&2
+    echo "Set FTPC_TAG to an immutable release tag instead" >&2
+    exit 1
+    ;;
+esac
+
 asset="ftpc-${platform}-${arch}.tar.gz"
 base_url="https://github.com/${repo}/releases/download/${tag}"
 tmp_dir="$(mktemp -d)"
@@ -98,8 +111,8 @@ if [ -z "$expected" ]; then
   exit 1
 fi
 
-actual="$(sha256_file "$archive" || true)"
-if [ -n "$actual" ] && [ "$actual" != "$expected" ]; then
+actual="$(sha256_file "$archive")"
+if [ "$actual" != "$expected" ]; then
   echo "Checksum mismatch for ${asset}" >&2
   exit 1
 fi

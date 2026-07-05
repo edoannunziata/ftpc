@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: package-master
@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -40,6 +42,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -62,9 +66,11 @@ jobs:
     needs: package
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: master-latest
+      RELEASE_TAG: ftpc-${{ github.sha }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -82,25 +88,19 @@ jobs:
           cd dist/packages
           sha256sum -c checksums.txt
 
-      - name: Move release tag
+      - name: Create release tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -f "$RELEASE_TAG" "$GITHUB_SHA"
-          git push -f origin "refs/tags/$RELEASE_TAG"
+          git tag "$RELEASE_TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$RELEASE_TAG"
 
       - name: Publish GitHub release
         run: |
           notes="Automated ftpc package from master commit ${GITHUB_SHA}."
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release edit "$RELEASE_TAG" \
-              --title "ftpc master build" \
-              --notes "$notes" \
-              --prerelease
-          else
-            gh release create "$RELEASE_TAG" \
-              --title "ftpc master build" \
-              --notes "$notes" \
-              --prerelease
-          fi
-          gh release upload "$RELEASE_TAG" dist/packages/*.tar.gz dist/packages/checksums.txt --clobber
+          gh release create "$RELEASE_TAG" \
+            dist/packages/*.tar.gz \
+            dist/packages/checksums.txt \
+            --title "ftpc master build ${GITHUB_SHA}" \
+            --notes "$notes" \
+            --prerelease

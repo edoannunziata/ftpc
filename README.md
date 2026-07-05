@@ -6,18 +6,17 @@ Azure Data Lake Storage Gen2, and Azure Blob Storage.
 
 ## Quick Start
 
-Install the latest packaged build from `master`:
+Install a packaged build from an immutable release tag:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/edoannunziata/ftpc/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/edoannunziata/ftpc/ftpc-<commit-sha>/install.sh | FTPC_TAG="ftpc-<commit-sha>" bash
 ```
 
-Use a different install directory, repo, or release tag when needed:
+Use a different install directory or repo when needed:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/edoannunziata/ftpc/master/install.sh | FTPC_INSTALL_DIR="$HOME/.local/bin" bash
-curl -fsSL https://raw.githubusercontent.com/edoannunziata/ftpc/master/install.sh | FTPC_TAG="master-latest" bash
-curl -fsSL https://raw.githubusercontent.com/edoannunziata/ftpc/master/install.sh | FTPC_REPO="owner/ftpc" bash
+curl -fsSL https://raw.githubusercontent.com/edoannunziata/ftpc/ftpc-<commit-sha>/install.sh | FTPC_TAG="ftpc-<commit-sha>" FTPC_INSTALL_DIR="$HOME/.local/bin" bash
+curl -fsSL https://raw.githubusercontent.com/edoannunziata/ftpc/ftpc-<commit-sha>/install.sh | FTPC_TAG="ftpc-<commit-sha>" FTPC_REPO="owner/ftpc" bash
 ```
 
 Build from source:
