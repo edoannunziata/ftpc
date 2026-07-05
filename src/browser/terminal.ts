@@ -42,6 +42,11 @@ interface ActiveTransfer {
   type: TransferKind;
 }
 
+interface QueuedKeypress {
+  chunk: string;
+  key: BrowserKeyPress;
+}
+
 async function loadEntries(
   session: StorageSession,
   cwd: string,
@@ -89,6 +94,8 @@ export async function runBrowser(
   let history: string[] = [];
   let activeTransfer: ActiveTransfer | undefined;
   let finishAfterTransfer = false;
+  const queuedKeypresses: QueuedKeypress[] = [];
+  let drainingKeypresses = false;
   let done = false;
   let resolveDone: () => void;
   const donePromise = new Promise<void>((resolve) => {
@@ -446,15 +453,51 @@ export async function runBrowser(
     draw();
   };
 
-  const onKey = (chunk: string, key: BrowserKeyPress): void => {
-    void handleKey(chunk, key).catch((error) => {
+  const runKey = async (
+    chunk: string,
+    key: BrowserKeyPress = {},
+  ): Promise<void> => {
+    try {
+      await handleKey(chunk, key);
+    } catch (error) {
       state = {
         ...state,
         prompt: undefined,
         status: `Error: ${(error as Error).message}`,
       };
       draw();
-    });
+    }
+  };
+
+  const drainQueuedKeypresses = async (): Promise<void> => {
+    if (drainingKeypresses) {
+      return;
+    }
+
+    drainingKeypresses = true;
+    try {
+      while (!done && queuedKeypresses.length > 0) {
+        const next = queuedKeypresses.shift();
+        if (next !== undefined) {
+          await runKey(next.chunk, next.key);
+        }
+      }
+    } finally {
+      drainingKeypresses = false;
+      if (!done && queuedKeypresses.length > 0) {
+        void drainQueuedKeypresses();
+      }
+    }
+  };
+
+  const onKey = (chunk: string, key: BrowserKeyPress): void => {
+    if (activeTransfer !== undefined) {
+      void runKey(chunk, key);
+      return;
+    }
+
+    queuedKeypresses.push({ chunk, key });
+    void drainQueuedKeypresses();
   };
 
   const onResize = (): void => {

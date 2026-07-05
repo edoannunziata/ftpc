@@ -647,6 +647,75 @@ describe("runBrowser transfers", () => {
     await running;
   });
 
+  test("serializes repeated refreshes instead of overlapping storage calls", async () => {
+    const input = new FakeInput();
+    const output = new FakeOutput();
+    let listCalls = 0;
+    let activeLists = 0;
+    let maxActiveLists = 0;
+
+    const session = {
+      name: "Remote",
+      basePath: "/",
+      async list() {
+        listCalls += 1;
+        activeLists += 1;
+        maxActiveLists = Math.max(maxActiveLists, activeLists);
+        const call = listCalls;
+        try {
+          if (activeLists > 1) {
+            throw new Error("concurrent list");
+          }
+          await Bun.sleep(20);
+          return [
+            {
+              path: `file-${call}.txt`,
+              name: `file-${call}.txt`,
+              type: "file" as const,
+              size: call,
+            },
+          ];
+        } finally {
+          activeLists -= 1;
+        }
+      },
+      async download() {},
+      async upload() {},
+      async delete() {
+        return false;
+      },
+      async mkdir() {
+        return false;
+      },
+      async close() {},
+      resolve(path: string) {
+        return path;
+      },
+    };
+
+    const running = runBrowser(session as unknown as StorageSession, {
+      input: input as unknown as ReadStream,
+      output: output as unknown as WriteStream,
+    });
+
+    await waitFor(
+      () => output.value.includes("file-1.txt"),
+      "initial browser render",
+    );
+    input.emit("keypress", "r", { name: "r" });
+    input.emit("keypress", "r", { name: "r" });
+    await waitFor(
+      () => listCalls === 3 && output.value.includes("file-3.txt"),
+      "serialized refreshes",
+    );
+
+    input.emit("keypress", "q", { name: "q" });
+    await running;
+
+    expect(maxActiveLists).toBe(1);
+    expect(output.value).not.toContain("concurrent list");
+  });
+
   test("shows download progress and cancels active transfers before q quits", async () => {
     const input = new FakeInput();
     const output = new FakeOutput();
