@@ -99,10 +99,50 @@ password = "proxypass"
       proxy: {
         host: "proxy.example.com",
         port: 1080,
+        protocol: "socks5",
         username: "proxyuser",
         password: "proxypass",
       },
     });
+  });
+
+  test("parses HTTP proxy protocol and default port", () => {
+    const config = parseConfigText(`
+[s3]
+type = "s3"
+bucket_name = "bucket"
+
+[s3.proxy]
+host = "proxy.example.com"
+protocol = "http"
+`);
+
+    expect(getRemote(config, "s3")).toMatchObject({
+      proxy: {
+        host: "proxy.example.com",
+        port: 80,
+        protocol: "http",
+      },
+    });
+  });
+
+  test("rejects unsupported proxy protocols", () => {
+    const config = parseConfigText(`
+[local]
+type = "local"
+
+[ftp]
+type = "ftp"
+url = "ftp.example.com"
+
+[ftp.proxy]
+host = "proxy.example.com"
+protocol = "socks4"
+`);
+
+    expect(config.warnings).toEqual([
+      "Invalid configuration for remote 'ftp': Proxy protocol must be one of: socks5, http, https - skipping",
+    ]);
   });
 
   test("default config is parseable and includes commented backend examples", async () => {
@@ -122,9 +162,7 @@ password = "proxypass"
       expect(text).toContain("# [my-s3-bucket]");
       expect(text).toContain("# [my-azure-datalake]");
       expect(text).toContain("# [my-azure-blob]");
-      expect(text).toContain(
-        "SOCKS5 proxy configuration is implemented for FTP, SFTP, and anonymous S3",
-      );
+      expect(text).toContain("Proxy configuration supports SOCKS5");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

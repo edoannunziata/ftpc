@@ -22,10 +22,14 @@
     "typescript": "^5.9.0"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1079.0",
+    "@aws-sdk/lib-storage": "^3.1079.0",
     "@azure/identity": "^4.13.1",
     "@azure/storage-blob": "^12.32.0",
     "@azure/storage-file-datalake": "^12.30.0",
+    "@smithy/node-http-handler": "^4.9.3",
     "basic-ftp": "^6.0.1",
+    "proxy-agent": "^8.0.2",
     "ssh2": "^1.17.0"
   }
 }

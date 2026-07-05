@@ -25,13 +25,11 @@ import type {
 import { isAbsolute, relative, resolve as resolveFilePath } from "node:path";
 import { joinRemotePath, stripLeadingSlash } from "./paths.ts";
 import { parseStorageUrl, type ParsedStorageUrl } from "./url.ts";
-import { ensureProxyUnsupported, throwProxyUnsupported } from "./proxy.ts";
 import type { Socks5Connector } from "./socks5.ts";
 
 export interface StorageConnectOptions {
   config?: Config;
   s3Backend?: S3Backend;
-  s3ProxyConnector?: Socks5Connector;
   ftpBackend?: FtpBackend;
   ftpProxyConnector?: Socks5Connector;
   sftpBackend?: SftpBackend;
@@ -72,7 +70,6 @@ export interface S3StorageOptions extends NamedStorageOptions {
   endpointUrl?: string;
   awsAccessKeyId?: string;
   awsSecretAccessKey?: string;
-  proxyConnector?: Socks5Connector;
   backend?: S3Backend;
 }
 
@@ -229,7 +226,6 @@ function configuredAccountUrl(
 function createS3SessionFromRemote(
   remote: Extract<RemoteConfig, { type: "s3" }>,
   backend?: S3Backend,
-  proxyConnector?: Socks5Connector,
 ): StorageSession {
   if (remote.url?.startsWith("s3://")) {
     const parsed = parseStorageUrl(remote.url);
@@ -242,7 +238,6 @@ function createS3SessionFromRemote(
         awsAccessKeyId: remote.awsAccessKeyId,
         awsSecretAccessKey: remote.awsSecretAccessKey,
         proxy: remote.proxy,
-        proxyConnector,
         backend,
       }),
       s3BasePathFromUrl(parsed),
@@ -264,7 +259,6 @@ function createS3SessionFromRemote(
       awsAccessKeyId: remote.awsAccessKeyId,
       awsSecretAccessKey: remote.awsSecretAccessKey,
       proxy: remote.proxy,
-      proxyConnector,
       backend,
     }),
     "/",
@@ -332,13 +326,13 @@ function createAzureDataLakeSessionFromRemote(
   remote: Extract<RemoteConfig, { type: "azure" }>,
   backend?: AzureDataLakeBackend,
 ): StorageSession {
-  ensureProxyUnsupported(remote);
   return new StorageSession(
     new AzureDataLakeClient({
       accountUrl: configuredAccountUrl(remote.url, "azure", remote.filesystem),
       filesystemName: remote.filesystem,
       connectionString: remote.connectionString,
       accountKey: remote.accountKey,
+      proxy: remote.proxy,
       name: remote.name,
       backend,
     }),
@@ -350,28 +344,18 @@ function createAzureBlobSessionFromRemote(
   remote: Extract<RemoteConfig, { type: "blob" }>,
   backend?: AzureBlobBackend,
 ): StorageSession {
-  ensureProxyUnsupported(remote);
   return new StorageSession(
     new AzureBlobClient({
       accountUrl: configuredAccountUrl(remote.url, "blob", remote.container),
       containerName: remote.container,
       connectionString: remote.connectionString,
       accountKey: remote.accountKey,
+      proxy: remote.proxy,
       name: remote.name,
       backend,
     }),
     configuredBasePathFromAccountUrl(remote.url, remote.container),
   );
-}
-
-function ensureNamedProxyUnsupported(
-  type: string,
-  name: string,
-  proxy?: ProxyConfig,
-): void {
-  if (proxy !== undefined) {
-    throwProxyUnsupported(type, name, proxy);
-  }
 }
 
 function createFromRemote(
@@ -388,11 +372,7 @@ function createFromRemote(
         options.ftpProxyConnector,
       );
     case "s3":
-      return createS3SessionFromRemote(
-        remote,
-        options.s3Backend,
-        options.s3ProxyConnector,
-      );
+      return createS3SessionFromRemote(remote, options.s3Backend);
     case "sftp":
       return createSftpSessionFromRemote(
         remote,
@@ -572,7 +552,6 @@ export class Storage {
         awsAccessKeyId: options.awsAccessKeyId,
         awsSecretAccessKey: options.awsSecretAccessKey,
         proxy: options.proxy,
-        proxyConnector: options.proxyConnector,
         backend: options.backend,
       }),
       options.basePath ?? "/",
@@ -585,13 +564,13 @@ export class Storage {
     options: AzureStorageOptions = {},
   ): StorageSession {
     const name = options.name ?? `Azure:${filesystemName}`;
-    ensureNamedProxyUnsupported("azure", name, options.proxy);
     return new StorageSession(
       new AzureDataLakeClient({
         accountUrl,
         filesystemName,
         connectionString: options.connectionString,
         accountKey: options.accountKey,
+        proxy: options.proxy,
         name,
         backend: options.backend,
       }),
@@ -605,13 +584,13 @@ export class Storage {
     options: AzureBlobStorageOptions = {},
   ): StorageSession {
     const name = options.name ?? `Blob:${containerName}`;
-    ensureNamedProxyUnsupported("blob", name, options.proxy);
     return new StorageSession(
       new AzureBlobClient({
         accountUrl,
         containerName,
         connectionString: options.connectionString,
         accountKey: options.accountKey,
+        proxy: options.proxy,
         name,
         backend: options.backend,
       }),

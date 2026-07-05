@@ -1,5 +1,7 @@
 import {
+  AnonymousCredential,
   BlobServiceClient,
+  newPipeline,
   StorageSharedKeyCredential,
 } from "@azure/storage-blob";
 import { DefaultAzureCredential } from "@azure/identity";
@@ -10,6 +12,13 @@ import type {
   TransferOptions,
 } from "../types.ts";
 import { ListingError, TransferError } from "../errors.ts";
+import type { ProxyConfig } from "../config.ts";
+import {
+  applyAzureSocksProxy,
+  azureProxyOptions,
+  hasAzureSocksProxy,
+  parseAzureConnectionString,
+} from "./azure_proxy.ts";
 
 export interface AzureBlobPrefixItem {
   kind: "prefix";
@@ -65,6 +74,7 @@ export interface AzureBlobClientOptions {
   containerName: string;
   connectionString?: string;
   accountKey?: string;
+  proxy?: ProxyConfig;
   name?: string;
   backend?: AzureBlobBackend;
 }
@@ -101,8 +111,39 @@ function createAzureBlobBackend(
   options: AzureBlobClientOptions,
 ): AzureBlobBackend {
   if (options.connectionString !== undefined) {
+    if (hasAzureSocksProxy(options.proxy)) {
+      const connection = parseAzureConnectionString(options.connectionString);
+      const pipeline =
+        connection.kind === "account"
+          ? applyAzureSocksProxy(
+              newPipeline(
+                new StorageSharedKeyCredential(
+                  connection.accountName,
+                  connection.accountKey,
+                ),
+                azureProxyOptions(options.proxy),
+              ),
+              options.proxy,
+            )
+          : applyAzureSocksProxy(
+              newPipeline(
+                new AnonymousCredential(),
+                azureProxyOptions(options.proxy),
+              ),
+              options.proxy,
+            );
+      const accountUrl =
+        connection.kind === "sas"
+          ? `${connection.url}?${connection.accountSas}`
+          : connection.url;
+      return new BlobServiceClient(accountUrl, pipeline).getContainerClient(
+        options.containerName,
+      ) as AzureBlobBackend;
+    }
+
     return BlobServiceClient.fromConnectionString(
       options.connectionString,
+      azureProxyOptions(options.proxy),
     ).getContainerClient(options.containerName) as AzureBlobBackend;
   }
 
@@ -115,9 +156,21 @@ function createAzureBlobBackend(
           options.accountKey,
         );
 
-  return new BlobServiceClient(accountUrl, credential).getContainerClient(
-    options.containerName,
-  ) as AzureBlobBackend;
+  if (hasAzureSocksProxy(options.proxy)) {
+    return new BlobServiceClient(
+      accountUrl,
+      applyAzureSocksProxy(
+        newPipeline(credential, azureProxyOptions(options.proxy)),
+        options.proxy,
+      ),
+    ).getContainerClient(options.containerName) as AzureBlobBackend;
+  }
+
+  return new BlobServiceClient(
+    accountUrl,
+    credential,
+    azureProxyOptions(options.proxy),
+  ).getContainerClient(options.containerName) as AzureBlobBackend;
 }
 
 function formatBlobPath(path: string): string {

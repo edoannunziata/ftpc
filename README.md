@@ -127,18 +127,17 @@ connection_string = "DefaultEndpointsProtocol=https;AccountName=..."
 # account_key = "ACCOUNT_KEY"
 ```
 
-FTP, SFTP, and anonymous S3 requests support SOCKS5 proxy settings:
+FTP, SFTP, S3, Azure Data Lake, and Azure Blob remotes support proxy settings.
+The protocol defaults to SOCKS5, and can also be set to HTTP or HTTPS:
 
 ```toml
 [my-ftp.proxy]
 host = "proxy.example.com"
+protocol = "socks5"
 port = 1080
 username = "proxyuser"
 password = "proxypass"
 ```
-
-Credentialed S3 and Azure SDK clients fail clearly if proxy settings are used,
-because native SDK proxy transport is not wired in yet.
 
 ## Storage URLs
 

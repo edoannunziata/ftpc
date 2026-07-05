@@ -2,10 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { Socket } from "node:net";
 import { join } from "node:path";
-import { Duplex } from "node:stream";
 import { tmpdir } from "node:os";
 import { parseConfigText } from "../src/config.ts";
-import { UnsupportedFeatureError, ValidationError } from "../src/errors.ts";
+import { ValidationError } from "../src/errors.ts";
 import { Storage } from "../src/storage.ts";
 import type { S3Backend, S3ListResponse } from "../src/clients/s3.ts";
 import type { FtpBackend } from "../src/clients/ftp.ts";
@@ -15,47 +14,6 @@ import type { AzureDataLakeBackend } from "../src/clients/azure_datalake.ts";
 
 let tempDir = "";
 const KEY_BODY_SHA256 = "W7RsxR909ISifkmlu0Yxwrnb60HzJxPTEYyl8vHqNME";
-
-class ScriptedHttpSocket extends Duplex {
-  readonly requests: Buffer[] = [];
-
-  constructor(private readonly response: Buffer) {
-    super();
-  }
-
-  override _read(): void {}
-
-  override _write(
-    chunk: Buffer,
-    _encoding: BufferEncoding,
-    callback: (error?: Error | null) => void,
-  ): void {
-    this.requests.push(Buffer.from(chunk));
-    queueMicrotask(() => {
-      this.push(this.response);
-      this.push(null);
-    });
-    callback();
-  }
-
-  requestText(): string {
-    return Buffer.concat(this.requests).toString("utf8");
-  }
-}
-
-function s3ListHttpResponse(): Buffer {
-  const body =
-    "<ListBucketResult><Contents><Key>base/file.txt</Key><Size>10</Size></Contents></ListBucketResult>";
-  return Buffer.from(
-    [
-      "HTTP/1.1 200 OK",
-      `Content-Length: ${Buffer.byteLength(body)}`,
-      "",
-      body,
-    ].join("\r\n"),
-    "utf8",
-  );
-}
 
 beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), "ftpc-storage-"));
@@ -293,85 +251,69 @@ describe("Storage", () => {
     expect(lakeListCalls).toEqual([{ path: "base", recursive: false }]);
   });
 
-  test("named constructor proxy options fail clearly until proxy transport is implemented for Azure backends", () => {
+  test("named constructor proxy options are accepted for SDK-backed remotes", async () => {
     const proxy = { host: "proxy.example.com", port: 1080 };
-
-    for (const [create, message] of [
-      [
-        () =>
-          Storage.azure("account.dfs.core.windows.net", "filesystem", {
-            proxy,
-          }),
-        "azure remote 'Azure:filesystem' uses SOCKS5 proxy proxy.example.com:1080",
-      ],
-      [
-        () =>
-          Storage.azureBlob("account.blob.core.windows.net", "container", {
-            proxy,
-          }),
-        "blob remote 'Blob:container' uses SOCKS5 proxy proxy.example.com:1080",
-      ],
-    ] as const) {
-      expect(create).toThrow(UnsupportedFeatureError);
-      expect(create).toThrow(message);
-    }
-  });
-
-  test("S3 named constructor supports SOCKS5 proxy transport for unsigned REST", async () => {
-    const proxyCalls: unknown[] = [];
-    const sockets: ScriptedHttpSocket[] = [];
-
-    const store = Storage.s3("public-bucket", {
-      basePath: "/base",
-      endpointUrl: "http://storage.example.com",
-      proxy: { host: "proxy.example.com", port: 1080 },
-      proxyConnector: async (options) => {
-        proxyCalls.push(options);
-        const socket = new ScriptedHttpSocket(s3ListHttpResponse());
-        sockets.push(socket);
-        return socket as unknown as Socket;
+    const s3Backend: S3Backend = {
+      async list() {
+        return {};
       },
-    });
-
-    const files = await store.list();
-
-    expect(files).toEqual([
-      {
-        path: "file.txt",
-        name: "file.txt",
-        type: "file",
-        size: 10,
-        modifiedTime: undefined,
+      file() {
+        return {
+          async arrayBuffer() {
+            return new ArrayBuffer(0);
+          },
+        };
       },
-    ]);
-    expect(proxyCalls).toEqual([
-      {
-        proxy: { host: "proxy.example.com", port: 1080 },
-        targetHost: "storage.example.com",
-        targetPort: 80,
+      async write() {
+        return 0;
       },
-    ]);
+      async delete() {},
+    };
+    const blobBackend: AzureBlobBackend = {
+      async *listBlobsByHierarchy() {},
+      getBlobClient() {
+        return { async downloadToFile() {} };
+      },
+      getBlockBlobClient() {
+        return { async uploadFile() {} };
+      },
+      async deleteBlob() {},
+      async uploadBlockBlob() {},
+    };
+    const lakeBackend: AzureDataLakeBackend = {
+      async *listPaths() {},
+      getFileClient() {
+        return {
+          async readToFile() {},
+          async uploadFile() {},
+          async delete() {},
+        };
+      },
+      getDirectoryClient() {
+        return { async create() {} };
+      },
+    };
+
     expect(
-      sockets[0]!
-        .requestText()
-        .startsWith(
-          "GET /public-bucket?list-type=2&prefix=base%2F&delimiter=%2F HTTP/1.1\r\n",
-        ),
-    ).toBe(true);
-  });
-
-  test("S3 proxy with explicit credentials fails clearly", () => {
-    const create = (): unknown =>
-      Storage.s3("bucket", {
-        proxy: { host: "proxy.example.com", port: 1080 },
+      await Storage.s3("bucket", {
+        proxy,
         awsAccessKeyId: "access",
         awsSecretAccessKey: "secret",
-      });
-
-    expect(create).toThrow(UnsupportedFeatureError);
-    expect(create).toThrow(
-      "s3 remote 'S3:bucket' uses SOCKS5 proxy proxy.example.com:1080",
-    );
+        backend: s3Backend,
+      }).list(),
+    ).toEqual([]);
+    expect(
+      await Storage.azureBlob("account.blob.core.windows.net", "container", {
+        proxy,
+        backend: blobBackend,
+      }).list(),
+    ).toEqual([]);
+    expect(
+      await Storage.azure("account.dfs.core.windows.net", "filesystem", {
+        proxy,
+        backend: lakeBackend,
+      }).list(),
+    ).toEqual([]);
   });
 
   test("FTP named constructor supports SOCKS5 proxy transport", async () => {
@@ -1071,7 +1013,13 @@ port = 1081
 
     expect(proxyCalls).toEqual([
       {
-        proxy: { host: "proxy.example.com", port: 1081 },
+        proxy: {
+          host: "proxy.example.com",
+          port: 1081,
+          protocol: "socks5",
+          username: undefined,
+          password: undefined,
+        },
         targetHost: "sftp.example.com",
         targetPort: 22,
       },
@@ -1129,7 +1077,7 @@ host = "proxy.example.com"
     ]);
   });
 
-  test("configured S3 proxy remotes use SOCKS5 proxy transport for unsigned REST", async () => {
+  test("configured S3 proxy remotes accept SDK proxy settings", async () => {
     const config = parseConfigText(`
 [s3]
 type = "s3"
@@ -1140,39 +1088,45 @@ endpoint_url = "http://storage.example.com"
 host = "proxy.example.com"
 port = 1082
 `);
-    const proxyCalls: unknown[] = [];
-    const sockets: ScriptedHttpSocket[] = [];
+    const calls: Array<{
+      prefix?: string;
+      delimiter?: string;
+      continuationToken?: string;
+    }> = [];
+    const backend: S3Backend = {
+      async list(input): Promise<S3ListResponse> {
+        calls.push(input ?? {});
+        return {
+          contents: [{ key: "base/file.txt", size: 10 }],
+        };
+      },
+      file() {
+        return {
+          async arrayBuffer() {
+            return new ArrayBuffer(0);
+          },
+        };
+      },
+      async write() {
+        return 0;
+      },
+      async delete() {},
+    };
 
     const store = Storage.connect("s3", {
       config,
-      s3ProxyConnector: async (options) => {
-        proxyCalls.push(options);
-        const socket = new ScriptedHttpSocket(s3ListHttpResponse());
-        sockets.push(socket);
-        return socket as unknown as Socket;
-      },
+      s3Backend: backend,
     });
 
     const files = await store.list("/base");
 
     expect(files.map((file) => file.name)).toEqual(["file.txt"]);
-    expect(proxyCalls).toEqual([
-      {
-        proxy: { host: "proxy.example.com", port: 1082 },
-        targetHost: "storage.example.com",
-        targetPort: 80,
-      },
+    expect(calls).toEqual([
+      { prefix: "base/", delimiter: "/", continuationToken: undefined },
     ]);
-    expect(
-      sockets[0]!
-        .requestText()
-        .startsWith(
-          "GET /public-bucket?list-type=2&prefix=base%2F&delimiter=%2F HTTP/1.1\r\n",
-        ),
-    ).toBe(true);
   });
 
-  test("network proxy remotes fail clearly until proxy transport is implemented for Azure backends", () => {
+  test("network proxy remotes are accepted for Azure backends", async () => {
     const config = parseConfigText(`
 [lake]
 type = "azure"
@@ -1192,22 +1146,42 @@ container = "data"
 host = "proxy.example.com"
 port = 1084
 `);
+    const lakeBackend: AzureDataLakeBackend = {
+      async *listPaths() {},
+      getFileClient() {
+        return {
+          async readToFile() {},
+          async uploadFile() {},
+          async delete() {},
+        };
+      },
+      getDirectoryClient() {
+        return { async create() {} };
+      },
+    };
+    const blobBackend: AzureBlobBackend = {
+      async *listBlobsByHierarchy() {},
+      getBlobClient() {
+        return { async downloadToFile() {} };
+      },
+      getBlockBlobClient() {
+        return { async uploadFile() {} };
+      },
+      async deleteBlob() {},
+      async uploadBlockBlob() {},
+    };
 
-    for (const [remoteName, proxyAddress] of [
-      ["lake", "proxy.example.com:1083"],
-      ["blob", "proxy.example.com:1084"],
-    ] as const) {
-      let thrown: unknown;
-      try {
-        Storage.connect(remoteName, { config });
-      } catch (error) {
-        thrown = error;
-      }
-
-      expect(thrown).toBeInstanceOf(UnsupportedFeatureError);
-      expect((thrown as Error).message).toContain(
-        `remote '${remoteName}' uses SOCKS5 proxy ${proxyAddress}`,
-      );
-    }
+    await expect(
+      Storage.connect("lake", {
+        config,
+        azureDataLakeBackend: lakeBackend,
+      }).list(),
+    ).resolves.toEqual([]);
+    await expect(
+      Storage.connect("blob", {
+        config,
+        azureBlobBackend: blobBackend,
+      }).list(),
+    ).resolves.toEqual([]);
   });
 });

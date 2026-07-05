@@ -8,9 +8,12 @@ import { parseStorageUrl } from "./url.ts";
 
 export const DEFAULT_CONFIG_PATH = join(homedir(), ".ftpcconf.toml");
 
+export type ProxyProtocol = "socks5" | "http" | "https";
+
 export interface ProxyConfig {
   host: string;
   port: number;
+  protocol?: ProxyProtocol;
   username?: string;
   password?: string;
 }
@@ -145,9 +148,8 @@ type = "local"
 # connection_string = "DefaultEndpointsProtocol=https;AccountName=..."
 # account_key = "your-account-key"
 
-# SOCKS5 proxy configuration is implemented for FTP, SFTP, and anonymous S3
-# unsigned REST requests. Credentialed S3, Azure Data Lake, and Azure Blob proxy
-# configurations fail clearly until native SDK proxy transport is added.
+# Proxy configuration supports SOCKS5, HTTP, and HTTPS proxies. The protocol
+# defaults to SOCKS5 for compatibility with older configs.
 #
 # [my-ftp-with-proxy]
 # type = "ftp"
@@ -156,6 +158,7 @@ type = "local"
 # password = "password"
 # [my-ftp-with-proxy.proxy]
 # host = "proxy.example.com"
+# protocol = "socks5"
 # port = 1080
 # username = "proxyuser"
 # password = "proxypass"
@@ -199,14 +202,39 @@ function portNumber(value: unknown, fallback: number, label: string): number {
   return port as number;
 }
 
+function proxyProtocol(value: unknown): ProxyProtocol {
+  if (value === undefined) {
+    return "socks5";
+  }
+  if (value === "socks5" || value === "http" || value === "https") {
+    return value;
+  }
+  throw new ValidationError(
+    "Proxy protocol must be one of: socks5, http, https",
+  );
+}
+
+function defaultProxyPort(protocol: ProxyProtocol): number {
+  switch (protocol) {
+    case "http":
+      return 80;
+    case "https":
+      return 443;
+    case "socks5":
+      return 1080;
+  }
+}
+
 function parseProxy(data: Record<string, unknown>): ProxyConfig | undefined {
   if (!isRecord(data.proxy)) {
     return undefined;
   }
   const host = requiredString(data.proxy, "host", "Proxy configuration");
+  const protocol = proxyProtocol(data.proxy.protocol);
   return {
     host,
-    port: portNumber(data.proxy.port, 1080, "Proxy"),
+    port: portNumber(data.proxy.port, defaultProxyPort(protocol), "Proxy"),
+    protocol,
     username: optionalString(data.proxy.username),
     password: optionalString(data.proxy.password),
   };

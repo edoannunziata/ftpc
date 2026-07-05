@@ -1,5 +1,7 @@
 import {
+  AnonymousCredential,
   DataLakeServiceClient,
+  newPipeline,
   StorageSharedKeyCredential,
 } from "@azure/storage-file-datalake";
 import { DefaultAzureCredential } from "@azure/identity";
@@ -10,6 +12,14 @@ import type {
   TransferOptions,
 } from "../types.ts";
 import { ListingError, TransferError } from "../errors.ts";
+import type { ProxyConfig } from "../config.ts";
+import {
+  applyAzureSocksProxy,
+  azureProxyOptions,
+  hasAzureSocksProxy,
+  parseAzureConnectionString,
+  toDfsEndpointUrl,
+} from "./azure_proxy.ts";
 
 export interface AzureDataLakePathItem {
   name?: string;
@@ -51,6 +61,7 @@ export interface AzureDataLakeClientOptions {
   filesystemName: string;
   connectionString?: string;
   accountKey?: string;
+  proxy?: ProxyConfig;
   name?: string;
   backend?: AzureDataLakeBackend;
 }
@@ -87,8 +98,40 @@ function createAzureDataLakeBackend(
   options: AzureDataLakeClientOptions,
 ): AzureDataLakeBackend {
   if (options.connectionString !== undefined) {
+    if (hasAzureSocksProxy(options.proxy)) {
+      const connection = parseAzureConnectionString(options.connectionString);
+      const pipeline =
+        connection.kind === "account"
+          ? applyAzureSocksProxy(
+              newPipeline(
+                new StorageSharedKeyCredential(
+                  connection.accountName,
+                  connection.accountKey,
+                ),
+                azureProxyOptions(options.proxy),
+              ),
+              options.proxy,
+            )
+          : applyAzureSocksProxy(
+              newPipeline(
+                new AnonymousCredential(),
+                azureProxyOptions(options.proxy),
+              ),
+              options.proxy,
+            );
+      const accountUrl =
+        connection.kind === "sas"
+          ? `${toDfsEndpointUrl(connection.url)}?${connection.accountSas}`
+          : toDfsEndpointUrl(connection.url);
+      return new DataLakeServiceClient(
+        accountUrl,
+        pipeline,
+      ).getFileSystemClient(options.filesystemName) as AzureDataLakeBackend;
+    }
+
     return DataLakeServiceClient.fromConnectionString(
       options.connectionString,
+      azureProxyOptions(options.proxy),
     ).getFileSystemClient(options.filesystemName) as AzureDataLakeBackend;
   }
 
@@ -101,9 +144,21 @@ function createAzureDataLakeBackend(
           options.accountKey,
         );
 
-  return new DataLakeServiceClient(accountUrl, credential).getFileSystemClient(
-    options.filesystemName,
-  ) as AzureDataLakeBackend;
+  if (hasAzureSocksProxy(options.proxy)) {
+    return new DataLakeServiceClient(
+      accountUrl,
+      applyAzureSocksProxy(
+        newPipeline(credential, azureProxyOptions(options.proxy)),
+        options.proxy,
+      ),
+    ).getFileSystemClient(options.filesystemName) as AzureDataLakeBackend;
+  }
+
+  return new DataLakeServiceClient(
+    accountUrl,
+    credential,
+    azureProxyOptions(options.proxy),
+  ).getFileSystemClient(options.filesystemName) as AzureDataLakeBackend;
 }
 
 function formatDataLakePath(path: string): string {

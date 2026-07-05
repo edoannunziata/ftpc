@@ -1,24 +1,45 @@
-import type { ProxyConfig, RemoteConfig } from "./config.ts";
-import { UnsupportedFeatureError } from "./errors.ts";
+import { ProxyAgent } from "proxy-agent";
+import type { ProxyConfig, ProxyProtocol } from "./config.ts";
+
+const proxyAgents = new Map<string, ProxyAgent>();
+
+export function proxyProtocol(proxy: ProxyConfig): ProxyProtocol {
+  return proxy.protocol ?? "socks5";
+}
 
 export function describeProxy(proxy: ProxyConfig): string {
-  return `${proxy.host}:${proxy.port}`;
+  return `${proxyProtocol(proxy)}://${proxy.host}:${proxy.port}`;
 }
 
-export function throwProxyUnsupported(
-  type: string,
-  name: string,
-  proxy: ProxyConfig,
-): never {
-  throw new UnsupportedFeatureError(
-    `${type} remote '${name}' uses SOCKS5 proxy ${describeProxy(proxy)}, but proxy transport is not implemented in the Bun adapter yet`,
-  );
+function agentProtocol(proxy: ProxyConfig): string {
+  const protocol = proxyProtocol(proxy);
+  return protocol === "socks5" ? "socks5h" : protocol;
 }
 
-export function ensureProxyUnsupported(remote: RemoteConfig): void {
-  if (remote.proxy === undefined) {
-    return;
+export function proxyUrl(proxy: ProxyConfig): string {
+  const url = new URL(`${agentProtocol(proxy)}://${proxy.host}`);
+  url.port = String(proxy.port);
+  if (proxy.username !== undefined) {
+    url.username = proxy.username;
   }
+  if (proxy.password !== undefined) {
+    url.password = proxy.password;
+  }
+  return url.toString();
+}
 
-  throwProxyUnsupported(remote.type, remote.name, remote.proxy);
+export function getProxyAgent(proxy: ProxyConfig): ProxyAgent {
+  const url = proxyUrl(proxy);
+  let agent = proxyAgents.get(url);
+  if (agent === undefined) {
+    agent = new ProxyAgent({
+      getProxyForUrl: () => url,
+    });
+    proxyAgents.set(url, agent);
+  }
+  return agent;
+}
+
+export function isHttpProxy(proxy: ProxyConfig): boolean {
+  return proxyProtocol(proxy) === "http" || proxyProtocol(proxy) === "https";
 }

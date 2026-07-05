@@ -1,4 +1,5 @@
 import type { Config, RemoteConfig } from "../config.ts";
+import { describeProxy } from "../proxy.ts";
 import {
   keyToBrowserPromptInput,
   type BrowserKeyPress,
@@ -108,7 +109,7 @@ function remoteDetails(remote: RemoteConfig): string[] {
   }
 
   if (remote.proxy !== undefined) {
-    details.push(`Proxy: ${remote.proxy.host}:${remote.proxy.port}`);
+    details.push(`Proxy: ${describeProxy(remote.proxy)}`);
   }
 
   return details;
