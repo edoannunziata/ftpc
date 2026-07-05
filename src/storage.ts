@@ -1,6 +1,10 @@
 import type { Config, ProxyConfig, RemoteConfig } from "./config.ts";
 import { getRemote } from "./config.ts";
-import { UnsupportedFeatureError, UnsupportedProtocolError } from "./errors.ts";
+import {
+  UnsupportedFeatureError,
+  UnsupportedProtocolError,
+  ValidationError,
+} from "./errors.ts";
 import { LocalClient } from "./clients/local.ts";
 import { S3Client, type S3Backend } from "./clients/s3.ts";
 import { FtpClient, type FtpBackend } from "./clients/ftp.ts";
@@ -18,6 +22,7 @@ import type {
   StorageClient,
   TransferOptions,
 } from "./types.ts";
+import { isAbsolute, relative, resolve as resolveFilePath } from "node:path";
 import { joinRemotePath, stripLeadingSlash } from "./paths.ts";
 import { parseStorageUrl, type ParsedStorageUrl } from "./url.ts";
 import { ensureProxyUnsupported, throwProxyUnsupported } from "./proxy.ts";
@@ -129,8 +134,30 @@ export class StorageSession {
   }
 
   resolve(path: string): string {
+    if (this.client instanceof LocalClient) {
+      return resolveLocalPath(this._basePath, path);
+    }
     return joinRemotePath(this._basePath, path);
   }
+}
+
+function resolveLocalPath(basePath: string, path: string): string {
+  const base = resolveFilePath(basePath || "/");
+  const resolved = isAbsolute(path)
+    ? resolveFilePath(path)
+    : resolveFilePath(base, path);
+  const relativePath = relative(base, resolved);
+
+  if (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !isAbsolute(relativePath))
+  ) {
+    return resolved;
+  }
+
+  throw new ValidationError(
+    `Path '${path}' resolves outside the local storage base path '${base}'`,
+  );
 }
 
 function s3BasePathFromUrl(parsed: ParsedStorageUrl): string {

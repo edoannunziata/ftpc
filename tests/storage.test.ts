@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { Socket } from "node:net";
 import { join } from "node:path";
 import { Duplex } from "node:stream";
 import { tmpdir } from "node:os";
 import { parseConfigText } from "../src/config.ts";
-import { UnsupportedFeatureError } from "../src/errors.ts";
+import { UnsupportedFeatureError, ValidationError } from "../src/errors.ts";
 import { Storage } from "../src/storage.ts";
 import type { S3Backend, S3ListResponse } from "../src/clients/s3.ts";
 import type { FtpBackend } from "../src/clients/ftp.ts";
@@ -84,6 +84,29 @@ describe("Storage", () => {
     const srcStore = Storage.connect("./src", { config });
     const srcFiles = await srcStore.list();
     expect(srcFiles.map((file) => file.name)).toContain("storage.ts");
+  });
+
+  test("rejects local paths that escape the configured base path", async () => {
+    const baseDir = join(tempDir, "safe");
+    const outsideFile = join(tempDir, "outside.txt");
+    await mkdir(baseDir);
+    await writeFile(join(baseDir, "inside.txt"), "inside");
+    await writeFile(outsideFile, "outside");
+
+    const store = Storage.local(baseDir);
+
+    expect(store.resolve("inside.txt")).toBe(join(baseDir, "inside.txt"));
+    expect(() => store.resolve("../outside.txt")).toThrow(ValidationError);
+    expect(() => store.resolve(outsideFile)).toThrow(ValidationError);
+    await expect(
+      store.download("../outside.txt", join(tempDir, "copy.txt")),
+    ).rejects.toThrow(ValidationError);
+    await expect(
+      store.upload(join(baseDir, "inside.txt"), outsideFile),
+    ).rejects.toThrow(ValidationError);
+    await expect(store.delete("../outside.txt")).rejects.toThrow(
+      ValidationError,
+    );
   });
 
   test("connects to configured local remote", async () => {
