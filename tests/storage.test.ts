@@ -75,6 +75,29 @@ describe("Storage", () => {
     expect(await readFile(join(tempDir, "b.txt"), "utf8")).toBe("alpha");
   });
 
+  test("local storage rejects paths that escape the base path", async () => {
+    const outsideFile = join(tempDir, "..", "outside.txt");
+    await writeFile(outsideFile, "outside");
+
+    const store = Storage.local(tempDir);
+
+    expect(store.resolve("nested/../a.txt")).toBe(join(tempDir, "a.txt"));
+    expect(() => store.resolve("../outside.txt")).toThrow("escapes base path");
+    expect(() => store.resolve(outsideFile)).toThrow("escapes base path");
+    await expect(
+      store.download("../outside.txt", join(tempDir, "copied.txt")),
+    ).rejects.toThrow("escapes base path");
+    await expect(
+      store.upload(join(tempDir, "a.txt"), "../uploaded.txt"),
+    ).rejects.toThrow("escapes base path");
+    await expect(store.mkdir("../created")).rejects.toThrow(
+      "escapes base path",
+    );
+    await expect(store.delete("../outside.txt")).rejects.toThrow(
+      "escapes base path",
+    );
+  });
+
   test("connects to protocol-less local paths", async () => {
     const rootStore = Storage.connect(".");
     const rootFiles = await rootStore.list();

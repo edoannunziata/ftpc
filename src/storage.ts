@@ -18,7 +18,11 @@ import type {
   StorageClient,
   TransferOptions,
 } from "./types.ts";
-import { joinRemotePath, stripLeadingSlash } from "./paths.ts";
+import {
+  joinRemotePath,
+  joinRemotePathInsideBase,
+  stripLeadingSlash,
+} from "./paths.ts";
 import { parseStorageUrl, type ParsedStorageUrl } from "./url.ts";
 import { ensureProxyUnsupported, throwProxyUnsupported } from "./proxy.ts";
 import type { Socks5Connector } from "./socks5.ts";
@@ -84,6 +88,7 @@ export class StorageSession {
   constructor(
     private readonly client: StorageClient,
     private readonly _basePath = "/",
+    private readonly enforceBasePath = false,
   ) {}
 
   get name(): string {
@@ -129,7 +134,9 @@ export class StorageSession {
   }
 
   resolve(path: string): string {
-    return joinRemotePath(this._basePath, path);
+    return this.enforceBasePath
+      ? joinRemotePathInsideBase(this._basePath, path)
+      : joinRemotePath(this._basePath, path);
   }
 }
 
@@ -347,7 +354,7 @@ function createFromRemote(
 ): StorageSession {
   switch (remote.type) {
     case "local":
-      return new StorageSession(new LocalClient(), "/");
+      return new StorageSession(new LocalClient(), "/", true);
     case "ftp":
       return createFtpSessionFromRemote(
         remote,
@@ -384,7 +391,7 @@ function createFromUrl(
   switch (parsed.protocol) {
     case "":
     case "file":
-      return new StorageSession(new LocalClient(), parsed.path || "/");
+      return new StorageSession(new LocalClient(), parsed.path || "/", true);
     case "s3":
       return new StorageSession(
         new S3Client({
@@ -482,7 +489,7 @@ export class Storage {
   }
 
   static local(path = "/"): StorageSession {
-    return new StorageSession(new LocalClient(), path);
+    return new StorageSession(new LocalClient(), path, true);
   }
 
   static ftp(host: string, options: FtpStorageOptions = {}): StorageSession {
