@@ -46,6 +46,7 @@ export interface SftpClientOptions {
   username?: string;
   password?: string;
   keyFilename?: string;
+  hostKeySha256?: string;
   proxy?: ProxyConfig;
   proxyConnector?: Socks5Connector;
   name?: string;
@@ -55,6 +56,10 @@ export interface SftpClientOptions {
 function formatPath(path: string): string {
   const normalized = normalizeRemotePath(path);
   return normalized === "." ? "/" : normalized;
+}
+
+function normalizeSha256HostKeyFingerprint(fingerprint: string): string {
+  return fingerprint.trim().replace(/^SHA256:/i, "");
 }
 
 function descriptorFromEntry(entry: FileEntryWithStats): FileDescriptor {
@@ -230,6 +235,8 @@ export class SftpClient implements StorageClient {
   private readonly username: string | undefined;
   private readonly password: string | undefined;
   private readonly keyFilename: string | undefined;
+  private readonly hostKeySha256: string | undefined;
+  private readonly requireHostKeyVerification: boolean;
   private readonly proxy: ProxyConfig | undefined;
   private readonly proxyConnector: Socks5Connector;
   private readonly displayName: string;
@@ -242,6 +249,8 @@ export class SftpClient implements StorageClient {
     this.username = options.username;
     this.password = options.password;
     this.keyFilename = options.keyFilename;
+    this.hostKeySha256 = options.hostKeySha256;
+    this.requireHostKeyVerification = options.backend === undefined;
     this.proxy = options.proxy;
     this.proxyConnector = options.proxyConnector ?? connectSocks5;
     this.displayName = options.name ?? `SFTP:${options.host}`;
@@ -262,6 +271,20 @@ export class SftpClient implements StorageClient {
       port: this.port,
       readyTimeout: 5000,
     };
+    if (this.hostKeySha256 === undefined) {
+      if (this.requireHostKeyVerification) {
+        throw new Error(
+          `SFTP host '${this.host}' requires a configured SHA256 host key fingerprint`,
+        );
+      }
+    } else {
+      const expectedHostKey = normalizeSha256HostKeyFingerprint(
+        this.hostKeySha256,
+      );
+      options.hostHash = "sha256";
+      options.hostVerifier = (hashedKey: string): boolean =>
+        hashedKey === expectedHostKey;
+    }
     if (this.username !== undefined) {
       options.username = this.username;
     }

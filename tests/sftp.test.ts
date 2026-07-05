@@ -175,6 +175,39 @@ describe("SftpClient", () => {
     ]);
   });
 
+  test("configures SHA256 host key verification when a fingerprint is provided", async () => {
+    const backend = new FakeSftpBackend();
+    const client = new SftpClient({
+      host: "sftp.example.com",
+      hostKeySha256: "SHA256:expected-fingerprint",
+      backend,
+    });
+
+    await client.list("/");
+
+    expect(backend.connectCalls[0]).toMatchObject({
+      host: "sftp.example.com",
+      port: 22,
+      hostHash: "sha256",
+    });
+    const hostVerifier = backend.connectCalls[0]!.hostVerifier as (
+      fingerprint: string,
+    ) => boolean;
+    expect(hostVerifier("expected-fingerprint")).toBe(true);
+    expect(hostVerifier("attacker-fingerprint")).toBe(false);
+  });
+
+  test("requires host key verification for the default SFTP backend", async () => {
+    const client = new SftpClient({ host: "sftp.example.com" });
+
+    const error = await thrownBy(() => client.list("/"));
+
+    expect(error).toBeInstanceOf(ListingError);
+    expect(error.message).toBe(
+      "Failed to list directory '/': SFTP host 'sftp.example.com' requires a configured SHA256 host key fingerprint",
+    );
+  });
+
   test("downloads, uploads, deletes, creates directories, and closes", async () => {
     const backend = new FakeSftpBackend();
     backend.remoteFiles.set("/remote/source.txt", "from sftp");
