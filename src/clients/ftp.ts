@@ -4,6 +4,7 @@ import { once } from "node:events";
 import { closeSync, openSync, readSync } from "node:fs";
 import type { Socket } from "node:net";
 import { Duplex } from "node:stream";
+import { checkServerIdentity as verifyTlsServerIdentity } from "node:tls";
 import type { ConnectionOptions as TlsConnectionOptions } from "node:tls";
 import type { ProxyConfig } from "../config.ts";
 import { baseName, normalizeRemotePath } from "../paths.ts";
@@ -371,9 +372,18 @@ async function prepareFtpsUploadTransfer(
 ): Promise<void> {
   const tlsOptions = backend.ftp.tlsOptions as TlsConnectionOptions;
   const originalCheckServerIdentity = tlsOptions.checkServerIdentity;
-  // Bun validates FTPS passive data sockets against the TCP peer when wrapping
-  // an existing socket; the control socket has already verified the host.
-  tlsOptions.checkServerIdentity = () => undefined;
+  const expectedHost = tlsOptions.servername ?? tlsOptions.host;
+  // Bun may pass the passive data socket peer address to checkServerIdentity
+  // when wrapping an existing FTPS socket. Verify the certificate against the
+  // authenticated control-channel host instead of disabling hostname checks.
+  if (expectedHost !== undefined) {
+    tlsOptions.checkServerIdentity = (_host, cert) => {
+      if (originalCheckServerIdentity !== undefined) {
+        return originalCheckServerIdentity(expectedHost, cert);
+      }
+      return verifyTlsServerIdentity(expectedHost, cert);
+    };
+  }
   try {
     await backend.prepareTransfer(backend.ftp);
   } finally {
