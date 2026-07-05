@@ -101,6 +101,8 @@ port = 22
 username = "user"
 password = "password"
 # key_filename = "~/.ssh/id_rsa"
+# known_hosts_path = "~/.ssh/known_hosts"
+# host_key_sha256 = "SHA256:base64-encoded-host-key-fingerprint"
 
 [my-s3]
 type = "s3"

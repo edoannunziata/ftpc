@@ -121,6 +121,7 @@ async function thrownBy(action: () => Promise<unknown>): Promise<Error> {
 }
 
 let tempDir = "";
+const KEY_BODY_SHA256 = "W7RsxR909ISifkmlu0Yxwrnb60HzJxPTEYyl8vHqNME";
 
 beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), "ftpc-sftp-"));
@@ -357,6 +358,28 @@ describe("SftpClient", () => {
 
     expect(verifier(Buffer.from("key-body"))).toBe(true);
     expect(verifier(Buffer.from("other-key"))).toBe(false);
+  });
+
+  test("configures SHA256 host key verification when a fingerprint is provided", async () => {
+    const backend = new FakeSftpBackend();
+    const client = new SftpClient({
+      host: "sftp.example.com",
+      hostKeySha256: `SHA256:${KEY_BODY_SHA256}`,
+      backend,
+    });
+
+    await client.list("/");
+
+    const hostVerifier = backend.connectCalls[0]!.hostVerifier as (
+      key: Buffer,
+    ) => boolean;
+    expect(backend.connectCalls[0]).toMatchObject({
+      host: "sftp.example.com",
+      port: 22,
+    });
+    expect(typeof hostVerifier).toBe("function");
+    expect(hostVerifier(Buffer.from("key-body"))).toBe(true);
+    expect(hostVerifier(Buffer.from("other-key"))).toBe(false);
   });
 
   test("expands home-relative private key filenames and passes password as key passphrase", async () => {

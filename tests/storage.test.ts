@@ -14,6 +14,7 @@ import type { AzureBlobBackend } from "../src/clients/azure_blob.ts";
 import type { AzureDataLakeBackend } from "../src/clients/azure_datalake.ts";
 
 let tempDir = "";
+const KEY_BODY_SHA256 = "W7RsxR909ISifkmlu0Yxwrnb60HzJxPTEYyl8vHqNME";
 
 class ScriptedHttpSocket extends Duplex {
   readonly requests: Buffer[] = [];
@@ -116,6 +117,7 @@ describe("Storage", () => {
     await expect(store.delete("../outside.txt")).rejects.toThrow(
       ValidationError,
     );
+    await expect(store.mkdir("../created")).rejects.toThrow(ValidationError);
   });
 
   test("connects to configured local remote", async () => {
@@ -220,11 +222,14 @@ describe("Storage", () => {
       username: "me",
       password: "secret",
       basePath: "/home",
-      knownHostsPath: await writeKnownHosts(),
+      hostKeySha256: `SHA256:${KEY_BODY_SHA256}`,
       backend: sftpBackend,
     });
     expect(sftp.name).toBe("SFTP:sftp.example.com");
     expect(await sftp.list()).toEqual([]);
+    const sftpHostVerifier = sftpConnectCalls[0]!.hostVerifier as (
+      key: Buffer,
+    ) => boolean;
     expect(sftpConnectCalls[0]).toMatchObject({
       host: "sftp.example.com",
       port: 22,
@@ -232,6 +237,9 @@ describe("Storage", () => {
       password: "secret",
       readyTimeout: 5000,
     });
+    expect(typeof sftpHostVerifier).toBe("function");
+    expect(sftpHostVerifier(Buffer.from("key-body"))).toBe(true);
+    expect(sftpHostVerifier(Buffer.from("other-key"))).toBe(false);
     expect(sftpReadCalls).toEqual(["/home"]);
 
     const blobListCalls: Array<{ delimiter: string; prefix?: string }> = [];
@@ -747,7 +755,7 @@ tls = false
 
   test("connects to configured SFTP remotes", async () => {
     const config = parseConfigText(
-      '[sftp]\ntype = "sftp"\nurl = "sftp.example.com/home"\nusername = "me"\npassword = "secret"\n',
+      `[sftp]\ntype = "sftp"\nurl = "sftp.example.com/home"\nusername = "me"\npassword = "secret"\nhost_key_sha256 = "SHA256:${KEY_BODY_SHA256}"\n`,
     );
     const connectCalls: Parameters<SftpBackend["connect"]>[0][] = [];
     const backend: SftpBackend = {
@@ -767,10 +775,12 @@ tls = false
     const store = Storage.connect("sftp", {
       config,
       sftpBackend: backend,
-      sftpKnownHostsPath: await writeKnownHosts(),
     });
     expect(store.name).toBe("sftp");
     expect(await store.list()).toEqual([]);
+    const hostVerifier = connectCalls[0]!.hostVerifier as (
+      key: Buffer,
+    ) => boolean;
     expect(connectCalls[0]).toMatchObject({
       host: "sftp.example.com",
       port: 22,
@@ -778,6 +788,9 @@ tls = false
       password: "secret",
       readyTimeout: 5000,
     });
+    expect(typeof hostVerifier).toBe("function");
+    expect(hostVerifier(Buffer.from("key-body"))).toBe(true);
+    expect(hostVerifier(Buffer.from("other-key"))).toBe(false);
   });
 
   test("configured SFTP remotes use URL credentials unless explicit fields are set", async () => {

@@ -118,6 +118,7 @@ password = "proxypass"
       expect(config.warnings).toEqual([]);
       expect(text).toContain("# [my-ftp-server]");
       expect(text).toContain("# [my-sftp-server]");
+      expect(text).toContain("# host_key_sha256");
       expect(text).toContain("# [my-s3-bucket]");
       expect(text).toContain("# [my-azure-datalake]");
       expect(text).toContain("# [my-azure-blob]");

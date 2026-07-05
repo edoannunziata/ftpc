@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import type { Socket } from "node:net";
 import { homedir } from "node:os";
 import { join as joinLocalPath } from "node:path";
@@ -47,6 +48,7 @@ export interface SftpClientOptions {
   password?: string;
   keyFilename?: string;
   knownHostsPath?: string;
+  hostKeySha256?: string;
   proxy?: ProxyConfig;
   proxyConnector?: Socks5Connector;
   name?: string;
@@ -56,6 +58,17 @@ export interface SftpClientOptions {
 function formatPath(path: string): string {
   const normalized = normalizeRemotePath(path);
   return normalized === "." ? "/" : normalized;
+}
+
+function normalizeSha256HostKeyFingerprint(fingerprint: string): string {
+  return fingerprint.trim().replace(/^SHA256:/i, "").replace(/=+$/u, "");
+}
+
+function sha256HostKeyFingerprint(key: Buffer): string {
+  return createHash("sha256")
+    .update(key)
+    .digest("base64")
+    .replace(/=+$/u, "");
 }
 
 function knownHostPatterns(host: string, port: number): string[] {
@@ -277,6 +290,7 @@ export class SftpClient implements StorageClient {
   private readonly password: string | undefined;
   private readonly keyFilename: string | undefined;
   private readonly knownHostsPath: string;
+  private readonly hostKeySha256: string | undefined;
   private readonly proxy: ProxyConfig | undefined;
   private readonly proxyConnector: Socks5Connector;
   private readonly displayName: string;
@@ -290,6 +304,7 @@ export class SftpClient implements StorageClient {
     this.password = options.password;
     this.keyFilename = options.keyFilename;
     this.knownHostsPath = options.knownHostsPath ?? "~/.ssh/known_hosts";
+    this.hostKeySha256 = options.hostKeySha256;
     this.proxy = options.proxy;
     this.proxyConnector = options.proxyConnector ?? connectSocks5;
     this.displayName = options.name ?? `SFTP:${options.host}`;
@@ -309,12 +324,21 @@ export class SftpClient implements StorageClient {
       host: this.host,
       port: this.port,
       readyTimeout: 5000,
-      hostVerifier: await createKnownHostsVerifier(
+    };
+    if (this.hostKeySha256 === undefined) {
+      options.hostVerifier = await createKnownHostsVerifier(
         this.knownHostsPath,
         this.host,
         this.port,
-      ),
-    };
+      );
+    } else {
+      const expectedHostKey = normalizeSha256HostKeyFingerprint(
+        this.hostKeySha256,
+      );
+      options.hostVerifier = (hashedKey: string | Buffer): boolean =>
+        Buffer.isBuffer(hashedKey) &&
+        sha256HostKeyFingerprint(hashedKey) === expectedHostKey;
+    }
     if (this.username !== undefined) {
       options.username = this.username;
     }

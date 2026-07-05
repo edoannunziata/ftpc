@@ -62,6 +62,7 @@ export interface SftpStorageOptions extends NamedStorageOptions {
   password?: string;
   keyFilename?: string;
   knownHostsPath?: string;
+  hostKeySha256?: string;
   proxyConnector?: Socks5Connector;
   backend?: SftpBackend;
 }
@@ -317,6 +318,7 @@ function createSftpSessionFromRemote(
       password: remote.password ?? parsed.password,
       keyFilename: remote.keyFilename,
       knownHostsPath: remote.knownHostsPath ?? knownHostsPath,
+      hostKeySha256: remote.hostKeySha256,
       proxy: remote.proxy,
       proxyConnector,
       name: remote.name,
@@ -546,6 +548,7 @@ export class Storage {
         password: options.password,
         keyFilename: options.keyFilename,
         knownHostsPath: options.knownHostsPath,
+        hostKeySha256: options.hostKeySha256,
         proxy: options.proxy,
         proxyConnector: options.proxyConnector,
         name,
