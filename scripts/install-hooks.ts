@@ -1,3 +1,6 @@
+const hooksPath = ".githooks";
+const decoder = new TextDecoder();
+
 const gitDir = Bun.spawnSync({
   cmd: ["git", "rev-parse", "--git-dir"],
   stdout: "pipe",
@@ -14,15 +17,21 @@ const currentHooksPath = Bun.spawnSync({
   stderr: "pipe",
 });
 
-if (
-  currentHooksPath.exitCode === 0 &&
-  new TextDecoder().decode(currentHooksPath.stdout).trim() === ".githooks"
-) {
+if (currentHooksPath.exitCode === 0) {
+  const configuredHooksPath = decoder.decode(currentHooksPath.stdout).trim();
+
+  if (configuredHooksPath === hooksPath) {
+    process.exit(0);
+  }
+
+  console.warn(
+    `Not installing ${hooksPath} because core.hooksPath is already set to ${configuredHooksPath}.`,
+  );
   process.exit(0);
 }
 
 const install = Bun.spawnSync({
-  cmd: ["git", "config", "core.hooksPath", ".githooks"],
+  cmd: ["git", "config", "core.hooksPath", hooksPath],
   stdin: "inherit",
   stdout: "inherit",
   stderr: "inherit",
