@@ -12,6 +12,7 @@ export interface BrowserState {
   loadingMessage?: string;
   mode?: BrowserMode;
   selected: number;
+  viewportOffset?: number;
   status: string;
   prompt?: BrowserPrompt;
   transfer?: BrowserTransfer;
@@ -51,6 +52,8 @@ export type BrowserCommand =
   | "quit"
   | "refresh"
   | "search"
+  | "scroll-down"
+  | "scroll-up"
   | "toggle-upload"
   | "up";
 
@@ -86,13 +89,82 @@ export function clampSelection(selected: number, entryCount: number): number {
   return Math.max(0, Math.min(selected, entryCount - 1));
 }
 
+export const BROWSER_SCROLL_MARGIN = 3;
+
+export function clampViewportOffset(
+  offset: number,
+  entryCount: number,
+  viewportRows: number,
+): number {
+  const rows = Math.max(1, viewportRows);
+  return Math.max(0, Math.min(offset, Math.max(0, entryCount - rows)));
+}
+
+function effectiveScrollMargin(viewportRows: number): number {
+  return Math.min(
+    BROWSER_SCROLL_MARGIN,
+    Math.floor((Math.max(1, viewportRows) - 1) / 2),
+  );
+}
+
+export function keepSelectionWithinViewportMargin(
+  state: BrowserState,
+  viewportRows: number,
+): BrowserState {
+  const rows = Math.max(1, viewportRows);
+  const selected = clampSelection(state.selected, state.entries.length);
+  const currentOffset = clampViewportOffset(
+    state.viewportOffset ?? 0,
+    state.entries.length,
+    rows,
+  );
+  const margin = effectiveScrollMargin(rows);
+  let viewportOffset = currentOffset;
+
+  if (selected < currentOffset + margin) {
+    viewportOffset = selected - margin;
+  } else if (selected >= currentOffset + rows - margin) {
+    viewportOffset = selected - rows + margin + 1;
+  }
+
+  viewportOffset = clampViewportOffset(
+    viewportOffset,
+    state.entries.length,
+    rows,
+  );
+  if (viewportOffset === state.viewportOffset) {
+    return state;
+  }
+  return { ...state, viewportOffset };
+}
+
 export function moveSelection(
   state: BrowserState,
   delta: number,
+  viewportRows?: number,
 ): BrowserState {
-  return {
+  const moved = {
     ...state,
     selected: clampSelection(state.selected + delta, state.entries.length),
+  };
+  return viewportRows === undefined
+    ? moved
+    : keepSelectionWithinViewportMargin(moved, viewportRows);
+}
+
+export function scrollViewport(
+  state: BrowserState,
+  delta: number,
+  viewportRows?: number,
+): BrowserState {
+  const rows = viewportRows ?? 1;
+  return {
+    ...state,
+    viewportOffset: clampViewportOffset(
+      (state.viewportOffset ?? 0) + delta,
+      state.entries.length,
+      rows,
+    ),
   };
 }
 
@@ -107,6 +179,7 @@ export function browserMode(state: BrowserState): BrowserMode {
 export function selectByPrefix(
   state: BrowserState,
   prefix: string,
+  viewportRows?: number,
 ): BrowserState {
   if (prefix === "") {
     return state;
@@ -119,7 +192,10 @@ export function selectByPrefix(
   if (index === -1) {
     return state;
   }
-  return { ...state, selected: index };
+  const selected = { ...state, selected: index };
+  return viewportRows === undefined
+    ? selected
+    : keepSelectionWithinViewportMargin(selected, viewportRows);
 }
 
 export function keyToBrowserCommand(
@@ -128,6 +204,12 @@ export function keyToBrowserCommand(
 ): BrowserCommand {
   if ((key.ctrl && key.name === "c") || chunk === "\x03") {
     return "quit";
+  }
+  if ((key.ctrl && key.name === "e") || chunk === "\x05") {
+    return "scroll-down";
+  }
+  if ((key.ctrl && key.name === "y") || chunk === "\x19") {
+    return "scroll-up";
   }
   if (chunk === "G") {
     return "last";
@@ -208,8 +290,9 @@ export function withEntries(
   state: BrowserState,
   entries: FileDescriptor[],
   status?: string,
+  viewportRows?: number,
 ): BrowserState {
-  return {
+  const updated = {
     ...state,
     entries,
     loadingMessage: undefined,
@@ -218,6 +301,9 @@ export function withEntries(
     status:
       status ?? `${entries.length} item${entries.length === 1 ? "" : "s"}`,
   };
+  return viewportRows === undefined
+    ? updated
+    : keepSelectionWithinViewportMargin(updated, viewportRows);
 }
 
 function appendPromptInput(input: string, value: string): string {
@@ -231,6 +317,7 @@ function withSearchPrompt(
   state: BrowserState,
   input: string,
   previousStatus: string,
+  viewportRows?: number,
 ): BrowserState {
   return selectByPrefix(
     {
@@ -239,12 +326,14 @@ function withSearchPrompt(
       status: `Search: ${input}`,
     },
     input,
+    viewportRows,
   );
 }
 
 export function applyBrowserPromptInput(
   state: BrowserState,
   input: BrowserPromptInput,
+  viewportRows?: number,
 ): BrowserTransition {
   const prompt = state.prompt;
   if (prompt === undefined) {
@@ -271,7 +360,12 @@ export function applyBrowserPromptInput(
             ? appendPromptInput(prompt.input, input.value)
             : prompt.input;
       return {
-        state: withSearchPrompt(state, nextInput, prompt.previousStatus),
+        state: withSearchPrompt(
+          state,
+          nextInput,
+          prompt.previousStatus,
+          viewportRows,
+        ),
         effect: { type: "none" },
       };
     }
@@ -404,6 +498,7 @@ export function applyBrowserPromptInput(
 export function applyBrowserCommand(
   state: BrowserState,
   command: BrowserCommand,
+  viewportRows?: number,
 ): BrowserTransition {
   switch (command) {
     case "back":
@@ -411,11 +506,20 @@ export function applyBrowserCommand(
     case "quit":
       return { state, effect: { type: "quit" } };
     case "down":
-      return { state: moveSelection(state, 1), effect: { type: "none" } };
+      return {
+        state: moveSelection(state, 1, viewportRows),
+        effect: { type: "none" },
+      };
     case "up":
-      return { state: moveSelection(state, -1), effect: { type: "none" } };
+      return {
+        state: moveSelection(state, -1, viewportRows),
+        effect: { type: "none" },
+      };
     case "first":
-      return { state: { ...state, selected: 0 }, effect: { type: "none" } };
+      return {
+        state: { ...state, selected: 0, viewportOffset: 0 },
+        effect: { type: "none" },
+      };
     case "last":
       return {
         state: {
@@ -424,7 +528,22 @@ export function applyBrowserCommand(
             state.entries.length - 1,
             state.entries.length,
           ),
+          viewportOffset: clampViewportOffset(
+            state.entries.length - 1,
+            state.entries.length,
+            viewportRows ?? 1,
+          ),
         },
+        effect: { type: "none" },
+      };
+    case "scroll-down":
+      return {
+        state: scrollViewport(state, 1, viewportRows),
+        effect: { type: "none" },
+      };
+    case "scroll-up":
+      return {
+        state: scrollViewport(state, -1, viewportRows),
         effect: { type: "none" },
       };
     case "open": {

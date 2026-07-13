@@ -17,6 +17,7 @@ import {
   applyBrowserCommand,
   applyBrowserPromptInput,
   browserMode,
+  keepSelectionWithinViewportMargin,
   keyToBrowserCommand,
   keyToBrowserPromptInput,
   withEntries,
@@ -88,6 +89,7 @@ export async function runBrowser(
     loadingMessage: "Connecting...",
     mode: "normal",
     selected: 0,
+    viewportOffset: 0,
     status: "",
   };
   let remoteCwd = state.cwd;
@@ -122,6 +124,9 @@ export async function runBrowser(
     );
   };
 
+  const viewportRows = (): number =>
+    Math.max(1, Math.max(6, output.rows ?? 24) - 2);
+
   const activeSession = (): StorageSession =>
     browserMode(state) === "upload" ? uploadSession : session;
 
@@ -131,6 +136,7 @@ export async function runBrowser(
         state,
         await loadEntries(activeSession(), state.cwd),
         status,
+        viewportRows(),
       );
     } catch (error) {
       state = {
@@ -138,6 +144,7 @@ export async function runBrowser(
         entries: [],
         loadingMessage: undefined,
         selected: 0,
+        viewportOffset: 0,
         prompt: undefined,
         status: `Error: ${(error as Error).message}`,
       };
@@ -250,6 +257,7 @@ export async function runBrowser(
           ...state,
           cwd: joinRemotePath(state.cwd, effect.path),
           selected: 0,
+          viewportOffset: 0,
         };
         if (browserMode(state) === "normal") {
           remoteCwd = state.cwd;
@@ -265,6 +273,7 @@ export async function runBrowser(
           ...state,
           cwd: previous,
           selected: 0,
+          viewportOffset: 0,
         };
         if (browserMode(state) === "normal") {
           remoteCwd = state.cwd;
@@ -281,6 +290,7 @@ export async function runBrowser(
           ...state,
           cwd: parentRemotePath(state.cwd),
           selected: 0,
+          viewportOffset: 0,
         };
         if (browserMode(state) === "normal") {
           remoteCwd = state.cwd;
@@ -298,6 +308,7 @@ export async function runBrowser(
           mode: "upload",
           prompt: undefined,
           selected: 0,
+          viewportOffset: 0,
           status: "In upload mode - Press U to exit",
           title: "Select a file to upload",
         };
@@ -311,6 +322,7 @@ export async function runBrowser(
           mode: "normal",
           prompt: undefined,
           selected: 0,
+          viewportOffset: 0,
           status: "Exited upload mode",
           title: remoteTitle,
         };
@@ -368,6 +380,7 @@ export async function runBrowser(
               mode: "normal",
               prompt: undefined,
               selected: 0,
+              viewportOffset: 0,
               status: `Uploaded: ${effect.name} to ${remoteCwd}`,
               title: remoteTitle,
             };
@@ -431,7 +444,11 @@ export async function runBrowser(
           ? { type: "submit" as const }
           : keyToBrowserPromptInput(chunk, key);
       if (input !== undefined) {
-        const transition = applyBrowserPromptInput(state, input);
+        const transition = applyBrowserPromptInput(
+          state,
+          input,
+          viewportRows(),
+        );
         state = transition.state;
         await runEffect(transition.effect);
       }
@@ -442,6 +459,7 @@ export async function runBrowser(
     const transition = applyBrowserCommand(
       state,
       keyToBrowserCommand(chunk, key),
+      viewportRows(),
     );
     state = transition.state;
     await runEffect(transition.effect);
@@ -502,6 +520,7 @@ export async function runBrowser(
 
   const onResize = (): void => {
     if (!done) {
+      state = keepSelectionWithinViewportMargin(state, viewportRows());
       draw();
     }
   };
