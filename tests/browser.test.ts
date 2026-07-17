@@ -39,6 +39,7 @@ const state: BrowserState = {
     },
   ],
   selected: 0,
+  viewportOffset: 0,
   status: "2 items",
 };
 
@@ -56,6 +57,10 @@ describe("browser state", () => {
 
   test("maps keys to pure browser commands", () => {
     expect(keyToBrowserCommand("j", { name: "j" })).toBe("down");
+    expect(keyToBrowserCommand("", { name: "e", ctrl: true })).toBe(
+      "scroll-down",
+    );
+    expect(keyToBrowserCommand("\x19")).toBe("scroll-up");
     expect(keyToBrowserCommand("q")).toBe("quit");
     expect(keyToBrowserCommand("G", { name: "g" })).toBe("last");
     expect(keyToBrowserCommand("", { name: "return" })).toBe("open");
@@ -68,6 +73,56 @@ describe("browser state", () => {
     expect(keyToBrowserCommand("u")).toBe("toggle-upload");
     expect(keyToBrowserCommand("", { name: "c", ctrl: true })).toBe("quit");
     expect(keyToBrowserCommand("\x03")).toBe("quit");
+  });
+
+  test("scrolls the viewport without moving the selection", () => {
+    const entries = Array.from({ length: 12 }, (_, index) => ({
+      path: `file-${index}`,
+      name: `file-${index}`,
+      type: "file" as const,
+    }));
+    const initial = {
+      ...state,
+      entries,
+      selected: 5,
+      viewportOffset: 1,
+    };
+
+    const scrolledDown = applyBrowserCommand(initial, "scroll-down", 8).state;
+    const scrolledUp = applyBrowserCommand(scrolledDown, "scroll-up", 8).state;
+
+    expect(scrolledDown.selected).toBe(5);
+    expect(scrolledDown.viewportOffset).toBe(2);
+    expect(scrolledUp.selected).toBe(5);
+    expect(scrolledUp.viewportOffset).toBe(1);
+  });
+
+  test("keeps three rows between the selection and viewport margins", () => {
+    const entries = Array.from({ length: 12 }, (_, index) => ({
+      path: `file-${index}`,
+      name: `file-${index}`,
+      type: "file" as const,
+    }));
+    const nearBottom = {
+      ...state,
+      entries,
+      selected: 4,
+      viewportOffset: 0,
+    };
+    const nearTop = {
+      ...state,
+      entries,
+      selected: 5,
+      viewportOffset: 2,
+    };
+
+    const movedDown = applyBrowserCommand(nearBottom, "down", 8).state;
+    const movedUp = applyBrowserCommand(nearTop, "up", 8).state;
+
+    expect(movedDown.selected).toBe(5);
+    expect(movedDown.viewportOffset).toBe(1);
+    expect(movedUp.selected).toBe(4);
+    expect(movedUp.viewportOffset).toBe(1);
   });
 
   test("returns effects for commands that need storage work", () => {
@@ -302,6 +357,8 @@ describe("renderBrowser", () => {
     expect(frame.lines[23]).toContain("press any key to continue");
     expect(rendered).toContain("Key Commands");
     expect(rendered).toContain("Navigation Controls:");
+    expect(rendered).toContain("Ctrl-E");
+    expect(rendered).toContain("Ctrl-Y");
     expect(rendered).toContain("File Operations:");
     expect(rendered).toContain("press any key to continue");
     expect(rendered).not.toContain(">  D src");
@@ -444,6 +501,24 @@ describe("renderBrowser", () => {
     expect(rendered).toContain("\x1b[0;32m   F a1\x1b[0m");
     expect(rendered).toContain("\x1b[0;1;37m┌");
     expect(rendered).not.toContain("\x1b[0;1;37m   F a1");
+  });
+
+  test("renders an independently scrolled viewport", () => {
+    const entries = Array.from({ length: 10 }, (_, index) => ({
+      path: `a${index}`,
+      name: `a${index}`,
+      type: "file" as const,
+    }));
+    const rendered = renderBrowser(
+      { ...state, entries, selected: 0, viewportOffset: 2 },
+      { width: 60, height: 6 },
+    );
+
+    expect(rendered).toContain("F a2");
+    expect(rendered).toContain("F a5");
+    expect(rendered).not.toContain("F a1");
+    expect(rendered).not.toContain("F a6");
+    expect(rendered).not.toContain(">  F");
   });
 
   test("serializes exactly the frame height without a scrolling newline", () => {

@@ -209,6 +209,8 @@ Transfer options support an `AbortSignal` and an `onProgress` callback.
 | ------------------- | ---------------------------------------- |
 | `j` / down          | Move selection down                      |
 | `k` / up            | Move selection up                        |
+| `Ctrl+E`            | Scroll the viewport down                 |
+| `Ctrl+Y`            | Scroll the viewport up                   |
 | `g` / `G`           | Jump to first or last entry              |
 | `l` / right / enter | Enter directory or confirm file download |
 | `h` / left          | Go back                                  |

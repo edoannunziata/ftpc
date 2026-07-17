@@ -1,6 +1,6 @@
 import type { FileDescriptor } from "../types.ts";
 import type { BrowserState } from "./state.ts";
-import { clampSelection } from "./state.ts";
+import { clampSelection, clampViewportOffset } from "./state.ts";
 
 export interface BrowserDimensions {
   width: number;
@@ -63,6 +63,8 @@ const BROWSER_HELP_LINES = [
   "Navigation Controls:",
   "  j, DOWN    - Move selection down",
   "  k, UP      - Move selection up",
+  "  Ctrl-E     - Scroll viewport down",
+  "  Ctrl-Y     - Scroll viewport up",
   "  g          - Go to first item",
   "  G          - Go to last item",
   "  l, RIGHT   - Enter directory",
@@ -438,6 +440,13 @@ function formatEntry(
 }
 
 function firstVisibleIndex(state: BrowserState, rows: number): number {
+  if (state.viewportOffset !== undefined) {
+    return clampViewportOffset(
+      state.viewportOffset,
+      state.entries.length,
+      rows,
+    );
+  }
   const selected = clampSelection(state.selected, state.entries.length);
   return Math.max(
     0,
