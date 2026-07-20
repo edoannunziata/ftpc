@@ -2,8 +2,24 @@
   "name": "ftpc",
   "version": "0.1.0",
   "description": "File transfer client with modular storage backends.",
+  "private": true,
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/edoannunziata/ftpc.git"
+  },
+  "homepage": "https://github.com/edoannunziata/ftpc#readme",
+  "bugs": {
+    "url": "https://github.com/edoannunziata/ftpc/issues"
+  },
+  "keywords": [
+    "ftp",
+    "sftp",
+    "s3",
+    "azure",
+    "cli"
+  ],
   "scripts": {
     "dev": "bun run src/index.ts",
     "format": "bunx prettier --write . --ignore-unknown --ignore-path .prettierignore",
@@ -11,24 +27,23 @@
     "hooks:install": "bun run scripts/install-hooks.ts",
     "package": "bun run scripts/package.ts",
     "package:all": "bun run scripts/package.ts --all",
+    "package:npm": "bun run scripts/package-npm.ts",
     "test": "bun test tests",
     "typecheck": "bunx tsc --noEmit",
     "build:exe": "bun run build.ts"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.0",
-    "@types/ssh2": "^1.15.5",
-    "typescript": "^7.0.2"
-  },
-  "dependencies": {
     "@aws-sdk/client-s3": "^3.1079.0",
     "@aws-sdk/lib-storage": "^3.1079.0",
     "@azure/identity": "^4.13.1",
     "@azure/storage-blob": "^12.32.0",
     "@azure/storage-file-datalake": "^12.30.0",
     "@smithy/node-http-handler": "^4.9.3",
+    "@types/bun": "^1.3.0",
+    "@types/ssh2": "^1.15.5",
     "basic-ftp": "^6.0.1",
     "proxy-agent": "^8.0.2",
-    "ssh2": "^1.17.0"
+    "ssh2": "^1.17.0",
+    "typescript": "^7.0.2"
   }
 }

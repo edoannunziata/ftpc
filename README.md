@@ -6,7 +6,23 @@ Azure Data Lake Storage Gen2, and Azure Blob Storage.
 
 ## Quick Start
 
-Install a packaged build from an immutable release tag:
+Install the native `ftpc` command from npm:
+
+```bash
+npm install --global ftpc
+ftpc --help
+```
+
+The installer selects a standalone executable for the current operating system,
+CPU architecture, and Linux C library. Bun is not required at runtime.
+
+Install the latest standalone build without npm on Linux or macOS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/edoannunziata/ftpc/master/install.sh | bash
+```
+
+Pin the installer to an immutable release tag when reproducibility is important:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/edoannunziata/ftpc/ftpc-<commit-sha>/install.sh | FTPC_TAG="ftpc-<commit-sha>" bash
@@ -238,3 +254,25 @@ variables, then run:
 ```bash
 FTPC_INTEGRATION=1 bun test tests/integration.test.ts
 ```
+
+## Publishing to npm
+
+A push to the `production` branch runs the test suite, cross-compiles standalone
+executables, and publishes the version in `package.json` to npm. npm package
+versions are immutable, so update the version before each production push. The
+CLI version in `src/cli.ts` must match.
+
+The first publication needs a GitHub Actions secret named `NPM_TOKEN`. Use a
+short-lived npm granular access token with read/write access to all packages and
+bypass 2FA enabled. The workflow publishes `ftpc` plus the `ftpc-*` platform
+packages. After the first publication, configure npm trusted publishing on every
+published package for:
+
+- GitHub user or organization: `edoannunziata`
+- Repository: `ftpc`
+- Workflow filename: `npm-publish.yml`
+- Allowed action: `npm publish`
+
+Once a trusted publisher is configured, remove the `NPM_TOKEN` secret and revoke
+the bootstrap token. Future production publishes authenticate through GitHub
+OIDC.

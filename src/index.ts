@@ -1,3 +1,5 @@
+#!/usr/bin/env bun
+
 export * from "./types.ts";
 export * from "./errors.ts";
 export * from "./config.ts";
