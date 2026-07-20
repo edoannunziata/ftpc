@@ -1,5 +1,5 @@
 {
-  "name": "ftpc",
+  "name": "@edoannunziata/ftpc",
   "version": "0.1.0",
   "description": "File transfer client with modular storage backends.",
   "private": true,

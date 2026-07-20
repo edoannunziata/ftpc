@@ -154,7 +154,9 @@ for (const target of nativeTargets) {
   copyFileSync("LICENSE", join(packageDir, "LICENSE"));
 }
 
-const launcherDir = join(outputDir, projectPackage.name);
+// Keep the output directory unscoped so the publishing workflow can treat the
+// launcher like the native packages even though its registry name is scoped.
+const launcherDir = join(outputDir, "ftpc");
 const launcherBinDir = join(launcherDir, "bin");
 mkdirSync(launcherBinDir, { recursive: true });
 copyFileSync("scripts/npm-launcher.js", join(launcherBinDir, "ftpc.js"));

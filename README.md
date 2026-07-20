@@ -9,7 +9,7 @@ Azure Data Lake Storage Gen2, and Azure Blob Storage.
 Install the native `ftpc` command from npm:
 
 ```bash
-npm install --global ftpc
+npm install --global @edoannunziata/ftpc
 ftpc --help
 ```
 
