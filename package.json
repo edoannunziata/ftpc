@@ -1,6 +1,6 @@
 {
   "name": "@edoannunziata/ftpc",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "File transfer client with modular storage backends.",
   "private": true,
   "type": "module",

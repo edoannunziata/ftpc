@@ -89,5 +89,3 @@ jobs:
           done
 
           publish_package dist/npm/ftpc
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
