@@ -17,9 +17,19 @@ interface ProjectPackage {
   bugs: { url: string };
 }
 
+type NativeBuildTarget =
+  | "bun-darwin-arm64"
+  | "bun-darwin-x64"
+  | "bun-linux-arm64"
+  | "bun-linux-arm64-musl"
+  | "bun-linux-x64-baseline"
+  | "bun-linux-x64-musl"
+  | "bun-windows-arm64"
+  | "bun-windows-x64-baseline";
+
 interface NativeTarget {
   packageName: string;
-  target: Bun.Build.Target;
+  target: NativeBuildTarget;
   os: "darwin" | "linux" | "win32";
   cpu: "arm64" | "x64";
   libc?: "glibc" | "musl";
@@ -158,9 +168,17 @@ for (const target of nativeTargets) {
 // launcher like the native packages even though its registry name is scoped.
 const launcherDir = join(outputDir, "ftpc");
 const launcherBinDir = join(launcherDir, "bin");
+const launcherPath = join(launcherBinDir, "ftpc.js");
 mkdirSync(launcherBinDir, { recursive: true });
-copyFileSync("scripts/npm-launcher.js", join(launcherBinDir, "ftpc.js"));
-chmodSync(join(launcherBinDir, "ftpc.js"), 0o755);
+run([
+  "bun",
+  "build",
+  "--target=node",
+  "scripts/npm-launcher.ts",
+  "--outfile",
+  launcherPath,
+]);
+chmodSync(launcherPath, 0o755);
 copyFileSync("LICENSE", join(launcherDir, "LICENSE"));
 copyFileSync("README.md", join(launcherDir, "README.md"));
 

@@ -9,15 +9,48 @@ import { basename, join, resolve } from "node:path";
 
 interface ReleaseTarget {
   target: string;
-  platform: "linux" | "darwin";
+  platform: "linux" | "darwin" | "windows";
   arch: "x64" | "arm64";
+  executableName: "ftpc" | "ftpc.exe";
 }
 
 const releaseTargets: ReleaseTarget[] = [
-  { target: "bun-linux-x64", platform: "linux", arch: "x64" },
-  { target: "bun-linux-arm64", platform: "linux", arch: "arm64" },
-  { target: "bun-darwin-x64", platform: "darwin", arch: "x64" },
-  { target: "bun-darwin-arm64", platform: "darwin", arch: "arm64" },
+  {
+    target: "bun-linux-x64",
+    platform: "linux",
+    arch: "x64",
+    executableName: "ftpc",
+  },
+  {
+    target: "bun-linux-arm64",
+    platform: "linux",
+    arch: "arm64",
+    executableName: "ftpc",
+  },
+  {
+    target: "bun-darwin-x64",
+    platform: "darwin",
+    arch: "x64",
+    executableName: "ftpc",
+  },
+  {
+    target: "bun-darwin-arm64",
+    platform: "darwin",
+    arch: "arm64",
+    executableName: "ftpc",
+  },
+  {
+    target: "bun-windows-x64-baseline",
+    platform: "windows",
+    arch: "x64",
+    executableName: "ftpc.exe",
+  },
+  {
+    target: "bun-windows-arm64",
+    platform: "windows",
+    arch: "arm64",
+    executableName: "ftpc.exe",
+  },
 ];
 
 function usage(): string {
@@ -33,7 +66,10 @@ function currentTarget(): ReleaseTarget {
   const platform = process.platform;
   const arch = process.arch;
   const target = releaseTargets.find(
-    (candidate) => candidate.platform === platform && candidate.arch === arch,
+    (candidate) =>
+      (candidate.platform === platform ||
+        (candidate.platform === "windows" && platform === "win32")) &&
+      candidate.arch === arch,
   );
   if (target === undefined) {
     throw new Error(`Unsupported local platform: ${platform}-${arch}`);
@@ -51,6 +87,9 @@ function parseArgs(argv: string[]): {
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
+    if (arg === undefined) {
+      break;
+    }
     if (arg === "--help" || arg === "-h") {
       console.log(usage());
       process.exit(0);
@@ -150,7 +189,7 @@ const checksums: string[] = [];
 for (const target of targets) {
   const packageName = `ftpc-${target.platform}-${target.arch}`;
   const packageRoot = join(workDir, packageName);
-  const binaryPath = join(packageRoot, "ftpc");
+  const binaryPath = join(packageRoot, target.executableName);
   const archivePath = join(outputDir, `${packageName}.tar.gz`);
 
   mkdirSync(packageRoot, { recursive: true });
@@ -159,6 +198,7 @@ for (const target of targets) {
     "bun",
     "build",
     "--compile",
+    "--external=cpu-features",
     `--target=${buildTargetArg(target)}`,
     "src/index.ts",
     "--outfile",

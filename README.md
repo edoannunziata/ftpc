@@ -22,6 +22,15 @@ Install the latest standalone build without npm on Linux or macOS:
 curl -fsSL https://raw.githubusercontent.com/edoannunziata/ftpc/master/install.sh | bash
 ```
 
+On Windows, run the PowerShell installer:
+
+```powershell
+irm https://raw.githubusercontent.com/edoannunziata/ftpc/master/install.ps1 | iex
+```
+
+The Windows installer defaults to `%LOCALAPPDATA%\Programs\ftpc\bin`. If that
+directory is not already on `PATH`, the installer prints a reminder to add it.
+
 Pin the installer to an immutable release tag when reproducibility is important:
 
 ```bash
@@ -33,6 +42,14 @@ Use a different install directory or repo when needed:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/edoannunziata/ftpc/ftpc-<commit-sha>/install.sh | FTPC_TAG="ftpc-<commit-sha>" FTPC_INSTALL_DIR="$HOME/.local/bin" bash
 curl -fsSL https://raw.githubusercontent.com/edoannunziata/ftpc/ftpc-<commit-sha>/install.sh | FTPC_TAG="ftpc-<commit-sha>" FTPC_REPO="owner/ftpc" bash
+```
+
+The same settings are available as environment variables in PowerShell:
+
+```powershell
+$env:FTPC_TAG = "ftpc-<commit-sha>"
+$env:FTPC_INSTALL_DIR = "$HOME\bin"
+irm https://raw.githubusercontent.com/edoannunziata/ftpc/ftpc-<commit-sha>/install.ps1 | iex
 ```
 
 Build from source:

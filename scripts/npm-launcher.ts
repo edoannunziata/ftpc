@@ -1,28 +1,33 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 
 const require = createRequire(import.meta.url);
 
-function linuxLibc() {
+type Libc = "glibc" | "musl";
+type PackageTarget = readonly [packageName: string, executableName: string];
+interface ProcessReport {
+  header: { glibcVersionRuntime?: string };
+}
+
+function linuxLibc(): Libc {
   try {
-    return process.report.getReport().header.glibcVersionRuntime
-      ? "glibc"
-      : "musl";
+    const report = process.report.getReport() as ProcessReport;
+    return report.header.glibcVersionRuntime ? "glibc" : "musl";
   } catch {
     return "glibc";
   }
 }
 
-function currentTarget() {
+function currentTarget(): PackageTarget | undefined {
   const suffix =
     process.platform === "linux"
       ? `${process.platform}-${process.arch}-${linuxLibc()}`
       : `${process.platform}-${process.arch}`;
 
-  const targets = {
+  const targets: Record<string, PackageTarget> = {
     "darwin-arm64": ["ftpc-darwin-arm64", "ftpc"],
     "darwin-x64": ["ftpc-darwin-x64", "ftpc"],
     "linux-arm64-glibc": ["ftpc-linux-arm64", "ftpc"],
@@ -45,7 +50,7 @@ if (target === undefined) {
 }
 
 const [packageName, executableName] = target;
-let executablePath;
+let executablePath: string;
 try {
   const packageJsonPath = require.resolve(`${packageName}/package.json`);
   executablePath = join(dirname(packageJsonPath), "bin", executableName);
