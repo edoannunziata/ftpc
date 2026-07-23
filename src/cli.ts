@@ -15,7 +15,7 @@ import {
   type RemoteSelection,
 } from "./browser/selector_terminal.ts";
 
-const VERSION = "0.1.1";
+const VERSION = "0.1.2";
 const COMMANDS = new Set([
   "browse",
   "remotes",
