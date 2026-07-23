@@ -273,6 +273,37 @@ url = "missing-type"
     expect(effectivePaths).toEqual(["nested/base"]);
   });
 
+  test("selector default root preserves a configured remote base path", async () => {
+    const config = parseConfigText(`
+[sftp]
+type = "sftp"
+url = "sftp.example.com/home"
+password = "secret"
+`);
+    const store = Storage.sftp("sftp.example.com", {
+      password: "secret",
+      basePath: "/home",
+      hostKeySha256: "SHA256:dGVzdA==",
+    });
+    const browsedPaths: Array<string | undefined> = [];
+    let selections = 0;
+
+    await runInteractiveBrowseLoop(config, undefined, undefined, {
+      async select() {
+        selections += 1;
+        return selections === 1 ? { remote: "sftp", path: "/" } : undefined;
+      },
+      async browse(openedStore, initialPath) {
+        browsedPaths.push(initialPath ?? openedStore.basePath);
+      },
+      connect() {
+        return store;
+      },
+    });
+
+    expect(browsedPaths).toEqual(["/home"]);
+  });
+
   test("interactive browse with configured local relative path starts from the process cwd", async () => {
     const config = parseConfigText('[local]\ntype = "local"\n');
     const browsedPaths: Array<string | undefined> = [];

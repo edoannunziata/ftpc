@@ -338,7 +338,9 @@ export async function runInteractiveBrowseLoop(
         return;
       }
       connection = selection.remote;
-      path = selection.path;
+      // The selector's default "/" represents the selected remote's root.
+      // Leave it undefined so configured URL base paths remain effective.
+      path = selection.path === "/" ? undefined : selection.path;
     }
 
     const store = deps.connect(connection, config);
